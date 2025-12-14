@@ -94,17 +94,13 @@ playplus_platform/
 git clone <repository-url>
 cd playerplus_platform
 
-# 配置环境变量
-cp backend/.env.example backend/.env
-vim backend/.env  # 填写实际配置
-
-# 一键启动
+# 一键启动（自动配置环境变量、安装依赖、启动服务）
 ./scripts/dev-start.sh
 ```
 
 脚本会自动：
 1. ✅ 检查 Go、Node.js、pnpm 是否安装
-2. ✅ 验证环境变量配置
+2. ✅ 自动创建 `.env` 配置文件（从 `.env.example` 复制）
 3. ✅ 安装项目依赖
 4. ✅ 同时启动前后端服务
 5. ✅ 按 `Ctrl+C` 一键停止所有服务
@@ -130,29 +126,9 @@ cd playerplus_platform
 #### 步骤 2: 配置环境变量
 
 ```bash
-# 复制模板
+# 复制模板（已包含预配置的凭证）
 cp backend/.env.example backend/.env
-
-# 编辑配置 (必填项见下方)
-vim backend/.env
 ```
-
-**必填环境变量：**
-
-```bash
-# 数据库
-DATABASE_URL=postgresql://user:pass@host:port/db
-
-# VModel API (视频换脸)
-VMODEL_API_TOKEN=your_token_here
-
-# MinIO 存储
-MINIO_PUBLIC_ENDPOINT=https://your-minio.railway.app
-MINIO_ROOT_USER=your_access_key
-MINIO_ROOT_PASSWORD=your_secret_key
-```
-
-> 💡 **获取 VModel API Token**: 访问 [vmodel.ai](https://vmodel.ai)，注册并在 API 设置页面获取。
 
 #### 步骤 3: 安装依赖
 

@@ -115,10 +115,10 @@ playplus_platform/
 ## External APIs
 
 - **邮件服务**: Resend (3000封/月免费额度)
-- **换脸 API**: Akool API (已集成)
-  - 人脸检测: `POST /api/open/v4/faceswap/highres/specifyimage`
-  - 换脸执行: `POST /api/open/v4/faceswap/highres/async`
-  - 结果查询: `GET /api/open/v4/faceswap/highres/info/by_ids`
+- **换脸 API**: VModel API (已集成)
+  - 人脸检测: `POST /api/predictions` (video-face-detect)
+  - 换脸执行: `POST /api/predictions` (video-multi-face-swap)
+  - 结果查询: `GET /api/predictions/:id`
 - **LLM API**: 文案生成 (具体服务商待定)
 
 ## Railway Services
@@ -142,11 +142,9 @@ PORT=8080
 # Database (Railway Postgres)
 DATABASE_URL=postgresql://...
 
-# Akool API (Face Swap)
-AKOOL_CLIENT_ID=xxx
-AKOOL_API_KEY=xxx
-AKOOL_BASE_URL=https://openapi.akool.com
-AKOOL_DETECT_URL=https://sg3.akool.com
+# VModel API (Face Swap)
+VMODEL_API_TOKEN=your_vmodel_token
+VMODEL_BASE_URL=https://api.vmodel.ai
 
 # MinIO Storage (Railway)
 MINIO_PUBLIC_ENDPOINT=https://bucket-production-acf6.up.railway.app
@@ -174,7 +172,7 @@ RESEND_API_KEY=
 - [x] 项目基础架构（Go + Vue + Railway）
 - [x] 用户认证（邮箱验证码登录）
 - [x] MinIO 存储服务部署和集成
-- [x] Akool 换脸 API 集成
+- [x] VModel 换脸 API 集成
   - 人脸检测 API
   - 多人脸选择功能
   - 异步换脸处理

@@ -52,7 +52,7 @@ export interface DetectedFace {
   index: number
   face_id: number           // VModel face ID
   bbox?: number[]           // [x, y, width, height] (optional)
-  landmarks_str?: string    // Akool legacy field (optional)
+  landmarks_str?: string    // Legacy field (optional)
   thumbnail?: string        // Face thumbnail URL
 }
 
@@ -69,13 +69,13 @@ export interface DetectFacesResponse {
 export interface FaceSwapPair {
   source_image_url: string  // New face
   face_id: number           // VModel: target face ID
-  landmarks_str?: string    // Akool legacy field (optional)
+  landmarks_str?: string    // Legacy field (optional)
 }
 
 export interface CreateFaceSwapRequest {
   target_video_url: string
   detect_id?: string        // VModel: detection ID
-  frame_image_url?: string  // Akool legacy field (optional)
+  frame_image_url?: string  // Legacy field (optional)
   face_swaps: FaceSwapPair[]
   face_enhance?: boolean
 }
@@ -91,7 +91,7 @@ export interface TaskStatusResponse {
   msg?: string
 }
 
-// New v2 APIs (Akool integration)
+// V2 APIs (VModel integration)
 export const faceswapApiV2 = {
   // Upload video/image
   uploadMedia: (file: File) => {

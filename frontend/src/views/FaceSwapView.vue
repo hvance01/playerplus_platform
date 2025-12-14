@@ -455,21 +455,21 @@ const handleCreate = async () => {
   taskModalVisible.value = true
 
   try {
-    // Build face swaps array with both VModel (face_id) and Akool (landmarks_str) fields
+    // Build face swaps array
     const faceSwaps = selectedFaceIndices.value.map(idx => {
       const face = detectedFaces.value[idx]
       return {
         source_image_url: replacementFaces.value[idx].url,
         face_id: face.face_id,                    // VModel: face ID
-        landmarks_str: face.landmarks_str || ''   // Akool legacy (optional)
+        landmarks_str: face.landmarks_str || ''   // Legacy (optional)
       }
     })
 
-    // Create task with both VModel (detect_id) and Akool (frame_image_url) fields
+    // Create task
     const { data } = await faceswapApiV2.createSwapTask({
       target_video_url: videoPublicUrl.value,
       detect_id: detectId.value,           // VModel: detection ID
-      frame_image_url: frameImageUrl.value, // Akool legacy (optional)
+      frame_image_url: frameImageUrl.value, // Legacy (optional)
       face_swaps: faceSwaps,
       face_enhance: faceEnhance.value
     })
