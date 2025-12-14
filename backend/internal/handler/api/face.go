@@ -1,7 +1,9 @@
 package api
 
 import (
+	"log"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"playplus_platform/internal/config"
@@ -70,9 +72,27 @@ func DetectFaces(c *gin.Context) {
 
 // detectWithVModel uses VModel API for face detection
 func detectWithVModel(c *gin.Context, imageURL string) {
+	log.Printf("[DEBUG] detectWithVModel called with URL: %s", imageURL)
+
 	vmodel := service.GetVModelClient()
 	result, err := vmodel.DetectFaces(c.Request.Context(), imageURL)
 	if err != nil {
+		log.Printf("[ERROR] VModel face detection failed: %v", err)
+
+		// Check if it's a "no face detected" error - return 200 with empty faces instead of 500
+		errStr := err.Error()
+		if strings.Contains(errStr, "未检测到人脸") || strings.Contains(errStr, "no face") || strings.Contains(errStr, "Detect.Failed") {
+			c.JSON(http.StatusOK, DetectFacesResponse{
+				Code: 0,
+				Data: &DetectFacesResponseData{
+					Faces:      []DetectedFaceResponse{},
+					FrameImage: imageURL,
+				},
+				Msg: "未检测到人脸，请调整视频位置重试",
+			})
+			return
+		}
+
 		c.JSON(http.StatusInternalServerError, DetectFacesResponse{
 			Code: 500,
 			Msg:  "Face detection failed: " + err.Error(),

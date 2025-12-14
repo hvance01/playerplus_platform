@@ -66,7 +66,7 @@ type vmodelTaskResult struct {
 	TaskID      string          `json:"task_id"`
 	UserID      int             `json:"user_id"`
 	Version     string          `json:"version"`
-	Error       *string         `json:"error"`
+	Error       json.RawMessage `json:"error"`
 	TotalTime   float64         `json:"total_time"`
 	PredictTime float64         `json:"predict_time"`
 	Logs        *string         `json:"logs"`
@@ -185,9 +185,9 @@ func (c *VModelClient) DetectFaces(ctx context.Context, mediaURL string) (*VMode
 	}
 
 	if taskResult.Status == "failed" {
-		errMsg := "unknown error"
-		if taskResult.Error != nil {
-			errMsg = *taskResult.Error
+		errMsg := parseVModelError(taskResult.Error)
+		if errMsg == "" {
+			errMsg = "unknown error"
 		}
 		return nil, fmt.Errorf("detection failed: %s", errMsg)
 	}
@@ -282,8 +282,8 @@ func (c *VModelClient) GetTaskStatus(ctx context.Context, taskID string) (*VMode
 		Status: c.mapStatus(taskResult.Status),
 	}
 
-	if taskResult.Error != nil {
-		result.Error = *taskResult.Error
+	if errMsg := parseVModelError(taskResult.Error); errMsg != "" {
+		result.Error = errMsg
 	}
 
 	// Parse output for result URL if completed
@@ -331,6 +331,20 @@ func (c *VModelClient) waitForTask(ctx context.Context, taskID string, timeout t
 	}
 
 	return nil, fmt.Errorf("task timeout after %v", timeout)
+}
+
+// parseVModelError handles error fields that may be strings or objects.
+func parseVModelError(raw json.RawMessage) string {
+	if len(raw) == 0 || string(raw) == "null" {
+		return ""
+	}
+
+	var errStr string
+	if err := json.Unmarshal(raw, &errStr); err == nil {
+		return errStr
+	}
+
+	return string(raw)
 }
 
 // mapStatus maps VModel status to our standard status

@@ -57,17 +57,24 @@
                 :tip-formatter="formatTime"
                 @change="seekVideo"
               />
+
+              <!-- Detection progress -->
+              <div v-if="detecting" class="detect-progress">
+                <a-spin size="small" />
+                <span>正在分析视频中的人脸，请稍候...</span>
+              </div>
+
               <div class="control-buttons">
-                <a-button @click="clearVideo" danger>
+                <a-button @click="clearVideo" danger :disabled="detecting">
                   <delete-outlined /> 重新上传
                 </a-button>
                 <a-button
                   type="primary"
-                  @click="detectFaces"
+                  @click="detectFacesFromVideo"
                   :loading="detecting"
-                  :disabled="!videoUrl"
+                  :disabled="!videoPublicUrl || detecting"
                 >
-                  <scan-outlined /> 检测人脸
+                  <scan-outlined /> {{ detecting ? '检测中...' : '重新检测' }}
                 </a-button>
               </div>
             </div>
@@ -301,6 +308,10 @@ const handleVideoUpload = async (file: File) => {
 const onVideoLoaded = () => {
   if (videoRef.value) {
     duration.value = videoRef.value.duration
+    // Auto detect faces from video after upload completes
+    if (videoPublicUrl.value) {
+      detectFacesFromVideo()
+    }
   }
 }
 
@@ -332,65 +343,31 @@ const clearVideo = () => {
   detectId.value = ''
 }
 
-// --- Face Detection ---
-const captureFrame = (): Promise<Blob> => {
-  return new Promise((resolve, reject) => {
-    if (!videoRef.value) {
-      reject(new Error('No video'))
-      return
-    }
+// --- Face Detection from Video URL ---
+const detectFacesFromVideo = async () => {
+  if (!videoPublicUrl.value || detecting.value) return
 
-    const video = videoRef.value
-    const canvas = document.createElement('canvas')
-    canvas.width = video.videoWidth
-    canvas.height = video.videoHeight
-
-    const ctx = canvas.getContext('2d')
-    if (!ctx) {
-      reject(new Error('Cannot get canvas context'))
-      return
-    }
-
-    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-    canvas.toBlob(
-      (blob) => {
-        if (blob) {
-          resolve(blob)
-        } else {
-          reject(new Error('Failed to capture frame'))
-        }
-      },
-      'image/jpeg',
-      0.95
-    )
-  })
-}
-
-const detectFaces = async () => {
   detecting.value = true
   try {
-    // Capture current frame
-    const frameBlob = await captureFrame()
-
-    // Upload frame and detect faces
-    const { data } = await faceswapApiV2.detectFacesFromUpload(frameBlob)
+    // Call API with video URL to detect ALL faces in the entire video
+    const { data } = await faceswapApiV2.detectFaces(videoPublicUrl.value)
 
     if (data.code !== 0) {
       throw new Error(data.msg || 'Detection failed')
     }
 
     if (!data.data?.faces.length) {
-      message.warning('未检测到人脸，请调整视频位置重试')
+      message.warning('视频中未检测到人脸，请确保视频中有清晰的人脸画面')
       return
     }
 
     detectedFaces.value = data.data.faces
     frameImageUrl.value = data.data.frame_image
-    detectId.value = data.data.detect_id || ''  // Save VModel detect_id
+    detectId.value = data.data.detect_id || ''
     selectedFaceIndices.value = []
     replacementFaces.value = {}
 
-    message.success(`检测到 ${data.data.faces.length} 张人脸`)
+    message.success(`检测到 ${data.data.faces.length} 张人脸，请选择要替换的人脸`)
   } catch (error: any) {
     message.error('人脸检测失败: ' + (error.message || '未知错误'))
   } finally {
@@ -661,6 +638,16 @@ const resetAll = () => {
   display: flex;
   gap: 12px;
   justify-content: flex-end;
+}
+
+.detect-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  background: #e6f7ff;
+  border-radius: 4px;
+  color: #1890ff;
 }
 
 .detect-alert {
