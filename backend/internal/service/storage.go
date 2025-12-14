@@ -106,24 +106,25 @@ func (s *StorageService) initMinioClient() error {
 		if err != nil {
 			return fmt.Errorf("create bucket: %w", err)
 		}
-
-		// Set bucket policy to allow public read
-		policy := fmt.Sprintf(`{
-			"Version": "2012-10-17",
-			"Statement": [{
-				"Effect": "Allow",
-				"Principal": {"AWS": ["*"]},
-				"Action": ["s3:GetObject"],
-				"Resource": ["arn:aws:s3:::%s/*"]
-			}]
-		}`, s.bucketName)
-
-		err = client.SetBucketPolicy(ctx, s.bucketName, policy)
-		if err != nil {
-			log.Printf("Warning: Failed to set bucket policy: %v", err)
-		}
-
 		log.Printf("Created bucket: %s", s.bucketName)
+	}
+
+	// Always ensure bucket has public read policy (for VModel API to access uploaded files)
+	policy := fmt.Sprintf(`{
+		"Version": "2012-10-17",
+		"Statement": [{
+			"Effect": "Allow",
+			"Principal": {"AWS": ["*"]},
+			"Action": ["s3:GetObject"],
+			"Resource": ["arn:aws:s3:::%s/*"]
+		}]
+	}`, s.bucketName)
+
+	err = client.SetBucketPolicy(ctx, s.bucketName, policy)
+	if err != nil {
+		log.Printf("Warning: Failed to set bucket policy: %v", err)
+	} else {
+		log.Printf("Bucket policy set to public read for: %s", s.bucketName)
 	}
 
 	return nil
