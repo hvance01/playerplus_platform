@@ -2,7 +2,7 @@
   <div class="login-container">
     <div class="login-card">
       <div class="login-header">
-        <h1>PlayPlus Platform</h1>
+        <h1>PlayerPlus Platform</h1>
         <p>AI 工具平台</p>
       </div>
 

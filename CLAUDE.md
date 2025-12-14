@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-PlayPlus Platform - 内部 AI 工具平台，提供视频换脸、Prompt 管理、AI 文案生成等能力。
+PlayerPlus Platform - 内部 AI 工具平台，提供视频换脸、Prompt 管理、AI 文案生成等能力。
 
 ### Feature Priority
 

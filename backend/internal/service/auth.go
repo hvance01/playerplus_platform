@@ -57,12 +57,12 @@ func SendVerificationCode(email string) error {
 	// Send email via Resend
 	if resendClient != nil {
 		params := &resend.SendEmailRequest{
-			From:    "PlayPlus <onboarding@resend.dev>", // 测试阶段使用 resend.dev，正式上线后改为 noreply@playerplus.cn
+			From:    "PlayerPlus <onboarding@resend.dev>", // 测试阶段使用 resend.dev，正式上线后改为 noreply@playerplus.cn
 			To:      []string{email},
-			Subject: "PlayPlus 登录验证码",
+			Subject: "PlayerPlus 登录验证码",
 			Html: fmt.Sprintf(`
 				<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-					<h2 style="color: #1890ff;">PlayPlus Platform</h2>
+					<h2 style="color: #1890ff;">PlayerPlus Platform</h2>
 					<p>您好，</p>
 					<p>您的登录验证码是：</p>
 					<div style="background: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">

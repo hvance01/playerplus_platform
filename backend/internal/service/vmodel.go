@@ -17,7 +17,6 @@ import (
 const (
 	VModelVideoFaceDetectVersion    = "fa9317a2ad086f7633f4f9b38f35c82495b6c5f38fa2afbe32d9d9df8620b389"
 	VModelVideoMultiFaceSwapVersion = "8e960283784c5b58e5f67236757c40bb6796c85e3c733d060342bdf62f9f0c64"
-	VModelVideoSingleFaceSwapVersion = "85e248d268bcc04f5302cf9645663c2c12acd03c953ec1a4bbfdc252a65bddc0"
 )
 
 // VModelClient handles all VModel API interactions
@@ -179,8 +178,8 @@ func (c *VModelClient) DetectFaces(ctx context.Context, mediaURL string) (*VMode
 		return nil, fmt.Errorf("decode create result: %w (body: %s)", err, string(resultBytes))
 	}
 
-	// Poll for completion (max 60 seconds for detection)
-	taskResult, err := c.waitForTask(ctx, createResult.TaskID, 60*time.Second)
+	// Poll for completion (max 120 seconds for video detection)
+	taskResult, err := c.waitForTask(ctx, createResult.TaskID, 120*time.Second)
 	if err != nil {
 		return nil, err
 	}
@@ -203,23 +202,36 @@ func (c *VModelClient) DetectFaces(ctx context.Context, mediaURL string) (*VMode
 		return nil, fmt.Errorf("no detection output")
 	}
 
-	output := outputs[0]
-	if output.Status != "succeed" {
+	// Aggregate faces from ALL outputs (not just the first one)
+	var allFaces []VModelDetectedFace
+	var detectID string
+
+	for _, output := range outputs {
+		if output.Status == "succeed" {
+			if detectID == "" {
+				detectID = output.ID // Use first successful detect_id
+			}
+			allFaces = append(allFaces, output.Faces...)
+		}
+	}
+
+	if detectID == "" {
+		// No successful detection
 		errMsg := "detection not successful"
-		if output.Error != nil {
-			errMsg = *output.Error
+		if outputs[0].Error != nil {
+			errMsg = *outputs[0].Error
 		}
 		return nil, fmt.Errorf(errMsg)
 	}
 
 	return &VModelDetectResult{
-		DetectID: output.ID,
-		Faces:    output.Faces,
+		DetectID: detectID,
+		Faces:    allFaces,
 	}, nil
 }
 
 // CreateSwapTask creates a video face swap task
-func (c *VModelClient) CreateSwapTask(ctx context.Context, detectID string, faceSwaps []VModelFaceSwapPair) (*VModelSwapTaskResult, error) {
+func (c *VModelClient) CreateSwapTask(ctx context.Context, detectID string, faceSwaps []VModelFaceSwapPair, faceEnhance bool) (*VModelSwapTaskResult, error) {
 	// Build face_map JSON string
 	faceMapJSON, err := json.Marshal(faceSwaps)
 	if err != nil {
@@ -229,8 +241,9 @@ func (c *VModelClient) CreateSwapTask(ctx context.Context, detectID string, face
 	reqBody := vmodelCreateTaskRequest{
 		Version: VModelVideoMultiFaceSwapVersion,
 		Input: map[string]interface{}{
-			"detect_id": detectID,
-			"face_map":  string(faceMapJSON),
+			"detect_id":    detectID,
+			"face_map":     string(faceMapJSON),
+			"face_enhance": faceEnhance,
 		},
 	}
 
@@ -277,7 +290,10 @@ func (c *VModelClient) GetTaskStatus(ctx context.Context, taskID string) (*VMode
 	if taskResult.Status == "succeeded" && len(taskResult.Output) > 0 {
 		// Output is an array of URLs
 		var outputArr []string
-		if err := json.Unmarshal(taskResult.Output, &outputArr); err == nil && len(outputArr) > 0 {
+		if err := json.Unmarshal(taskResult.Output, &outputArr); err != nil {
+			return nil, fmt.Errorf("failed to parse output URLs: %w (output: %s)", err, string(taskResult.Output))
+		}
+		if len(outputArr) > 0 {
 			result.ResultURL = outputArr[0]
 		}
 	}
@@ -336,4 +352,19 @@ func (c *VModelClient) mapStatus(status string) string {
 // VModelStatusToString converts status for API response
 func VModelStatusToString(status string) string {
 	return status // Already a string
+}
+
+// GetCredits retrieves the current credits balance
+func (c *VModelClient) GetCredits(ctx context.Context) (float64, error) {
+	resultBytes, err := c.doRequest(ctx, "POST", "/api/users/v1/account/credits/left", map[string]interface{}{})
+	if err != nil {
+		return 0, fmt.Errorf("get credits: %w", err)
+	}
+
+	var credits float64
+	if err := json.Unmarshal(resultBytes, &credits); err != nil {
+		return 0, fmt.Errorf("decode credits: %w (body: %s)", err, string(resultBytes))
+	}
+
+	return credits, nil
 }

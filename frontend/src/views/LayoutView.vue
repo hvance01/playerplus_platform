@@ -2,7 +2,7 @@
   <a-layout class="layout">
     <a-layout-sider v-model:collapsed="collapsed" :trigger="null" collapsible class="sider">
       <div class="logo">
-        <span v-if="!collapsed">PlayPlus</span>
+        <span v-if="!collapsed">PlayerPlus</span>
         <span v-else>P</span>
       </div>
       <a-menu

@@ -1,4 +1,4 @@
--- PlayPlus Platform 数据库初始化脚本
+-- PlayerPlus Platform 数据库初始化脚本
 -- 运行: psql $DATABASE_URL -f migrations/001_init.sql
 
 -- 用户表
