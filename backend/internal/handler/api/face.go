@@ -14,17 +14,15 @@ type DetectFacesRequest struct {
 
 // DetectedFaceResponse represents a detected face in API response
 type DetectedFaceResponse struct {
-	Index     int     `json:"index"`
-	FaceID    int     `json:"face_id"`
-	Thumbnail string  `json:"thumbnail,omitempty"`
+	Index     int       `json:"index"`
+	FaceID    int       `json:"face_id"`
+	Thumbnail string    `json:"thumbnail,omitempty"`
 	BBox      []float64 `json:"bbox,omitempty"`
-	// Legacy field for backward compatibility
-	LandmarksStr string `json:"landmarks_str,omitempty"`
 }
 
 type DetectFacesResponseData struct {
 	Faces      []DetectedFaceResponse `json:"faces"`
-	DetectID   string                 `json:"detect_id,omitempty"` // VModel detect_id for swap
+	DetectID   string                 `json:"detect_id,omitempty"`
 	FrameImage string                 `json:"frame_image"`
 }
 
@@ -47,15 +45,8 @@ func DetectFaces(c *gin.Context) {
 
 	cfg := config.Get()
 
-	// Try VModel first (preferred)
 	if cfg.IsVModelConfigured() {
 		detectWithVModel(c, req.ImageURL)
-		return
-	}
-
-	// Fallback to Akool
-	if cfg.IsAkoolConfigured() {
-		detectWithAkool(c, req.ImageURL)
 		return
 	}
 
@@ -65,16 +56,15 @@ func DetectFaces(c *gin.Context) {
 		Data: &DetectFacesResponseData{
 			Faces: []DetectedFaceResponse{
 				{
-					Index:        0,
-					FaceID:       0,
-					BBox:         []float64{100, 100, 150, 150},
-					LandmarksStr: "mock_landmarks_0",
+					Index:  0,
+					FaceID: 0,
+					BBox:   []float64{100, 100, 150, 150},
 				},
 			},
 			DetectID:   "mock_detect_id",
 			FrameImage: req.ImageURL,
 		},
-		Msg: "Mock response - No face swap API configured",
+		Msg: "Mock response - VModel API not configured",
 	})
 }
 
@@ -110,39 +100,6 @@ func detectWithVModel(c *gin.Context, imageURL string) {
 	})
 }
 
-// detectWithAkool uses Akool API for face detection (legacy)
-func detectWithAkool(c *gin.Context, imageURL string) {
-	akool := service.GetAkoolClient()
-	result, err := akool.DetectFaces(c.Request.Context(), imageURL)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, DetectFacesResponse{
-			Code: 500,
-			Msg:  "Face detection failed: " + err.Error(),
-		})
-		return
-	}
-
-	// Convert to response format
-	faces := make([]DetectedFaceResponse, len(result.Faces))
-	for i, f := range result.Faces {
-		faces[i] = DetectedFaceResponse{
-			Index:        f.Index,
-			FaceID:       f.Index,
-			BBox:         f.BBox,
-			LandmarksStr: f.LandmarksStr,
-			Thumbnail:    f.Thumbnail,
-		}
-	}
-
-	c.JSON(http.StatusOK, DetectFacesResponse{
-		Code: 0,
-		Data: &DetectFacesResponseData{
-			Faces:      faces,
-			FrameImage: result.FrameImage,
-		},
-	})
-}
-
 // DetectFacesFromUpload handles face detection from uploaded image (form-data)
 func DetectFacesFromUpload(c *gin.Context) {
 	file, err := c.FormFile("file")
@@ -168,15 +125,8 @@ func DetectFacesFromUpload(c *gin.Context) {
 
 	cfg := config.Get()
 
-	// Try VModel first (preferred)
 	if cfg.IsVModelConfigured() {
 		detectWithVModel(c, url)
-		return
-	}
-
-	// Fallback to Akool
-	if cfg.IsAkoolConfigured() {
-		detectWithAkool(c, url)
 		return
 	}
 
@@ -186,15 +136,14 @@ func DetectFacesFromUpload(c *gin.Context) {
 		Data: &DetectFacesResponseData{
 			Faces: []DetectedFaceResponse{
 				{
-					Index:        0,
-					FaceID:       0,
-					BBox:         []float64{100, 100, 150, 150},
-					LandmarksStr: "mock_landmarks_0",
+					Index:  0,
+					FaceID: 0,
+					BBox:   []float64{100, 100, 150, 150},
 				},
 			},
 			DetectID:   "mock_detect_id",
 			FrameImage: url,
 		},
-		Msg: "Mock response - No face swap API configured",
+		Msg: "Mock response - VModel API not configured",
 	})
 }

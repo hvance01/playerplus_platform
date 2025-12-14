@@ -20,13 +20,7 @@ type Config struct {
 	// Database
 	DatabaseURL string
 
-	// Akool API (legacy, kept for fallback)
-	AkoolClientID  string
-	AkoolAPIKey    string
-	AkoolBaseURL   string
-	AkoolDetectURL string
-
-	// VModel API (primary)
+	// VModel API
 	VModelAPIToken string
 	VModelBaseURL  string
 
@@ -51,13 +45,7 @@ func Get() *Config {
 			// Database
 			DatabaseURL: os.Getenv("DATABASE_URL"),
 
-			// Akool API (legacy)
-			AkoolClientID:  getEnv("AKOOL_CLIENT_ID", ""),
-			AkoolAPIKey:    getEnv("AKOOL_API_KEY", ""),
-			AkoolBaseURL:   getEnv("AKOOL_BASE_URL", "https://openapi.akool.com"),
-			AkoolDetectURL: getEnv("AKOOL_DETECT_URL", "https://sg3.akool.com"),
-
-			// VModel API (primary)
+			// VModel API
 			VModelAPIToken: getEnv("VMODEL_API_TOKEN", ""),
 			VModelBaseURL:  getEnv("VMODEL_BASE_URL", "https://api.vmodel.ai"),
 
@@ -88,19 +76,14 @@ func (c *Config) IsStorageConfigured() bool {
 	return c.StorageAccessKey != "" && c.StorageSecretKey != ""
 }
 
-// IsAkoolConfigured checks if Akool API is properly configured
-func (c *Config) IsAkoolConfigured() bool {
-	return c.AkoolAPIKey != ""
-}
-
 // IsVModelConfigured checks if VModel API is properly configured
 func (c *Config) IsVModelConfigured() bool {
 	return c.VModelAPIToken != ""
 }
 
-// IsFaceSwapConfigured checks if any face swap API is configured (prefers VModel)
+// IsFaceSwapConfigured checks if face swap API is configured
 func (c *Config) IsFaceSwapConfigured() bool {
-	return c.IsVModelConfigured() || c.IsAkoolConfigured()
+	return c.IsVModelConfigured()
 }
 
 // HTTPClient returns a shared HTTP client for making requests
