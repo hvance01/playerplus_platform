@@ -12,6 +12,9 @@ import (
 func SetupRouter() *gin.Engine {
 	r := gin.Default()
 
+	// Serve local uploads in development
+	r.Static("/uploads", "./uploads")
+
 	// API routes
 	apiGroup := r.Group("/api")
 	{
@@ -22,17 +25,45 @@ func SetupRouter() *gin.Engine {
 		// Auth routes
 		auth := apiGroup.Group("/auth")
 		{
+			auth.POST("/login", api.Login)
 			auth.POST("/send-code", api.SendVerificationCode)
 			auth.POST("/verify", api.VerifyCode)
 		}
 
-		// Face swap routes (mock for now)
+		// Legacy face swap routes (v1 - mock)
 		faceswap := apiGroup.Group("/faceswap")
 		faceswap.Use(middleware.AuthRequired())
 		{
 			faceswap.POST("/upload", api.UploadMedia)
 			faceswap.POST("/swap", api.SwapFace)
 			faceswap.GET("/tasks/:id", api.GetTaskStatus)
+		}
+
+		// New API v2 routes
+		v2 := apiGroup.Group("/v2")
+		v2.Use(middleware.AuthRequired())
+		{
+			// Media upload
+			media := v2.Group("/media")
+			{
+				media.POST("/upload", api.UploadMediaFile)        // Upload video/image
+				media.POST("/upload/face", api.UploadFaceImage)   // Upload face image
+				media.POST("/upload/frame", api.UploadFrame)      // Upload video frame
+			}
+
+			// Face detection
+			face := v2.Group("/face")
+			{
+				face.POST("/detect", api.DetectFaces)             // Detect faces from URL
+				face.POST("/detect/upload", api.DetectFacesFromUpload) // Detect faces from uploaded file
+			}
+
+			// Face swap
+			swap := v2.Group("/faceswap")
+			{
+				swap.POST("/create", api.CreateFaceSwapTask)      // Create face swap task
+				swap.GET("/task/:id", api.GetFaceSwapTaskStatus)  // Get task status
+			}
 		}
 	}
 

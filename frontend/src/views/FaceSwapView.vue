@@ -1,152 +1,210 @@
 <template>
   <div class="faceswap-container">
     <a-row :gutter="24">
-      <!-- Left: Upload list -->
-      <a-col :span="6">
-        <div class="panel">
-          <div class="panel-header">
-            <a-tabs v-model:activeKey="activeTab" size="small">
-              <a-tab-pane key="uploads" tab="我的上传" />
-              <a-tab-pane key="creations" tab="我的作品" />
-            </a-tabs>
-          </div>
-          <div class="media-list">
-            <div
-              v-for="item in mediaList"
-              :key="item.id"
-              :class="['media-item', { active: selectedMedia?.id === item.id }]"
-              @click="selectMedia(item)"
+      <!-- Left: Video Upload & Preview -->
+      <a-col :span="14">
+        <div class="panel video-panel">
+          <!-- Step 1: Upload Video -->
+          <div v-if="!videoUrl" class="upload-area">
+            <a-upload
+              :show-upload-list="false"
+              :before-upload="handleVideoUpload"
+              accept="video/*"
+              :disabled="uploading"
             >
-              <img :src="item.thumbnail" :alt="item.name" />
-              <span class="duration">{{ item.duration }}</span>
-            </div>
-          </div>
-          <a-upload
-            :show-upload-list="false"
-            :before-upload="handleUpload"
-            accept="video/*,image/*"
-          >
-            <a-button type="dashed" block>
-              <upload-outlined /> 上传文件
-            </a-button>
-          </a-upload>
-        </div>
-      </a-col>
-
-      <!-- Center: Preview -->
-      <a-col :span="12">
-        <div class="panel preview-panel">
-          <div v-if="selectedMedia" class="preview-content">
-            <video
-              v-if="selectedMedia.type === 'video'"
-              :src="selectedMedia.url"
-              controls
-              class="preview-video"
-            />
-            <img v-else :src="selectedMedia.url" class="preview-image" />
-          </div>
-          <a-empty v-else description="请选择或上传媒体文件" />
-        </div>
-      </a-col>
-
-      <!-- Right: Face selection & Model -->
-      <a-col :span="6">
-        <div class="panel">
-          <div class="panel-header">
-            <h3>添加人脸开始换脸</h3>
+              <div class="upload-placeholder">
+                <a-spin v-if="uploading" />
+                <template v-else>
+                  <cloud-upload-outlined class="upload-icon" />
+                  <p>点击或拖拽上传视频</p>
+                  <p class="hint">支持 MP4, WebM 格式</p>
+                </template>
+              </div>
+            </a-upload>
           </div>
 
-          <!-- Face slots -->
-          <div class="face-grid">
-            <div
-              v-for="(slot, index) in faceSlots"
-              :key="index"
-              class="face-slot"
-              @click="openFaceSelector(index)"
-            >
-              <template v-if="slot.face">
-                <img :src="slot.face.thumbnail" />
-                <a-button
-                  type="text"
-                  size="small"
-                  class="remove-btn"
-                  @click.stop="removeFace(index)"
+          <!-- Step 2: Video Player with Frame Capture -->
+          <div v-else class="video-section">
+            <div class="video-wrapper">
+              <video
+                ref="videoRef"
+                :src="videoUrl"
+                @loadedmetadata="onVideoLoaded"
+                @timeupdate="onTimeUpdate"
+                controls
+                class="video-player"
+              />
+              <!-- Face boxes overlay -->
+              <div v-if="detectedFaces.length" class="face-overlay">
+                <div
+                  v-for="face in detectedFaces"
+                  :key="face.index"
+                  :class="['face-box', { selected: selectedFaceIndices.includes(face.index) }]"
+                  :style="getFaceBoxStyle(face)"
+                  @click="toggleFaceSelection(face.index)"
                 >
-                  <close-outlined />
+                  <span class="face-label">{{ face.index + 1 }}</span>
+                </div>
+              </div>
+            </div>
+
+            <!-- Video controls -->
+            <div class="video-controls">
+              <a-slider
+                v-model:value="currentTime"
+                :max="duration"
+                :step="0.1"
+                :tip-formatter="formatTime"
+                @change="seekVideo"
+              />
+              <div class="control-buttons">
+                <a-button @click="clearVideo" danger>
+                  <delete-outlined /> 重新上传
                 </a-button>
-              </template>
-              <template v-else>
-                <plus-outlined class="add-icon" />
-              </template>
+                <a-button
+                  type="primary"
+                  @click="detectFaces"
+                  :loading="detecting"
+                  :disabled="!videoUrl"
+                >
+                  <scan-outlined /> 检测人脸
+                </a-button>
+              </div>
             </div>
-          </div>
 
-          <!-- Model selection -->
-          <div class="model-section">
-            <div class="section-header">
-              <span>Model</span>
-              <a-tooltip title="选择换脸算法模型">
-                <question-circle-outlined />
-              </a-tooltip>
+            <!-- Detection result info -->
+            <a-alert
+              v-if="detectedFaces.length"
+              type="success"
+              :message="`检测到 ${detectedFaces.length} 张人脸，点击视频中的人脸框选择要替换的人脸`"
+              show-icon
+              class="detect-alert"
+            />
+          </div>
+        </div>
+      </a-col>
+
+      <!-- Right: Face Selection & Replacement -->
+      <a-col :span="10">
+        <div class="panel face-panel">
+          <h3 class="panel-title">人脸替换设置</h3>
+
+          <!-- No faces detected yet -->
+          <a-empty
+            v-if="!detectedFaces.length"
+            description="请先上传视频并检测人脸"
+          />
+
+          <!-- Face selection and replacement -->
+          <div v-else class="face-config">
+            <!-- Selected faces for replacement -->
+            <div class="section">
+              <h4>选择要替换的人脸 (已选 {{ selectedFaceIndices.length }})</h4>
+              <div class="face-grid">
+                <div
+                  v-for="face in detectedFaces"
+                  :key="face.index"
+                  :class="['face-card', { selected: selectedFaceIndices.includes(face.index) }]"
+                  @click="toggleFaceSelection(face.index)"
+                >
+                  <div class="face-thumbnail">
+                    <img v-if="face.thumbnail" :src="face.thumbnail" />
+                    <div v-else class="face-number">{{ face.index + 1 }}</div>
+                  </div>
+                  <check-circle-filled
+                    v-if="selectedFaceIndices.includes(face.index)"
+                    class="check-icon"
+                  />
+                </div>
+              </div>
             </div>
-            <a-radio-group v-model:value="selectedModel" class="model-list">
-              <a-radio-button
-                v-for="model in models"
-                :key="model.value"
-                :value="model.value"
-                class="model-item"
-              >
-                {{ model.label }}
-                <a-tag v-if="model.tag" :color="model.tagColor" size="small">
-                  {{ model.tag }}
-                </a-tag>
-              </a-radio-button>
-            </a-radio-group>
-          </div>
 
-          <!-- HD Face toggle -->
-          <div class="hd-section">
-            <span>HD Face</span>
-            <a-tag color="purple">PRO</a-tag>
-            <a-switch v-model:checked="hdFace" :disabled="true" />
-          </div>
+            <!-- Upload replacement faces -->
+            <div v-if="selectedFaceIndices.length" class="section">
+              <h4>上传替换人脸照片</h4>
+              <div class="replacement-list">
+                <div
+                  v-for="faceIndex in selectedFaceIndices"
+                  :key="faceIndex"
+                  class="replacement-row"
+                >
+                  <div class="original-face">
+                    <span class="label">人脸 {{ faceIndex + 1 }}</span>
+                  </div>
+                  <arrow-right-outlined class="arrow" />
+                  <a-upload
+                    :show-upload-list="false"
+                    :before-upload="(file: File) => handleReplacementUpload(faceIndex, file)"
+                    accept="image/*"
+                  >
+                    <div
+                      v-if="replacementFaces[faceIndex]"
+                      class="uploaded-face"
+                    >
+                      <img :src="replacementFaces[faceIndex].preview" />
+                      <close-circle-filled
+                        class="remove-btn"
+                        @click.stop="removeReplacementFace(faceIndex)"
+                      />
+                    </div>
+                    <a-button v-else>
+                      <upload-outlined /> 上传新脸
+                    </a-button>
+                  </a-upload>
+                </div>
+              </div>
+            </div>
 
-          <!-- Create button -->
-          <a-button
-            type="primary"
-            size="large"
-            block
-            :loading="processing"
-            :disabled="!canCreate"
-            @click="handleCreate"
-          >
-            <template #icon><thunderbolt-outlined /></template>
-            Create
-          </a-button>
+            <!-- Options -->
+            <div class="section">
+              <h4>选项</h4>
+              <a-checkbox v-model:checked="faceEnhance">
+                HD 人脸增强 (消耗更多积分)
+              </a-checkbox>
+            </div>
+
+            <!-- Create button -->
+            <a-button
+              type="primary"
+              size="large"
+              block
+              :loading="processing"
+              :disabled="!canCreate"
+              @click="handleCreate"
+            >
+              <template #icon><thunderbolt-outlined /></template>
+              开始换脸
+            </a-button>
+          </div>
         </div>
       </a-col>
     </a-row>
 
-    <!-- Task status modal -->
+    <!-- Task Progress Modal -->
     <a-modal
       v-model:open="taskModalVisible"
-      title="处理进度"
+      title="换脸处理进度"
       :footer="null"
       :closable="!processing"
       :maskClosable="!processing"
+      width="400px"
     >
       <div class="task-status">
-        <a-spin v-if="currentTask?.status === 'processing'" />
+        <a-spin v-if="currentTask?.status === 'queuing' || currentTask?.status === 'processing'" size="large" />
         <check-circle-outlined v-else-if="currentTask?.status === 'completed'" class="success-icon" />
         <close-circle-outlined v-else-if="currentTask?.status === 'failed'" class="error-icon" />
-        <p>{{ taskStatusText }}</p>
-        <a-button
-          v-if="currentTask?.status === 'completed'"
-          type="primary"
-          :href="currentTask?.result_url"
-          target="_blank"
-        >
-          下载结果
+
+        <p class="status-text">{{ taskStatusText }}</p>
+
+        <div v-if="currentTask?.status === 'completed'" class="result-actions">
+          <a-button type="primary" :href="currentTask.result_url" target="_blank">
+            <download-outlined /> 下载结果视频
+          </a-button>
+          <a-button @click="resetAll">处理新视频</a-button>
+        </div>
+
+        <a-button v-if="currentTask?.status === 'failed'" @click="taskModalVisible = false">
+          关闭
         </a-button>
       </div>
     </a-modal>
@@ -157,67 +215,60 @@
 import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
 import {
+  CloudUploadOutlined,
+  ScanOutlined,
+  DeleteOutlined,
   UploadOutlined,
-  PlusOutlined,
-  CloseOutlined,
-  QuestionCircleOutlined,
+  ArrowRightOutlined,
+  CheckCircleFilled,
+  CloseCircleFilled,
   ThunderboltOutlined,
   CheckCircleOutlined,
-  CloseCircleOutlined
+  CloseCircleOutlined,
+  DownloadOutlined
 } from '@ant-design/icons-vue'
-import { faceswapApi } from '@/api'
+import { faceswapApiV2, type DetectedFace } from '@/api'
 
-interface MediaItem {
-  id: string
-  name: string
-  type: 'video' | 'image'
-  url: string
-  thumbnail: string
-  duration?: string
-}
+// --- State ---
+const videoRef = ref<HTMLVideoElement | null>(null)
+const videoUrl = ref('')
+const videoPublicUrl = ref('')  // URL for API access
+const duration = ref(0)
+const currentTime = ref(0)
+const frameImageUrl = ref('')   // Frame used for detection
+const detectId = ref('')        // VModel detect_id for swap
 
-interface FaceSlot {
-  face: { id: string; thumbnail: string } | null
-}
+const uploading = ref(false)
+const detecting = ref(false)
+const processing = ref(false)
 
-interface SwapTask {
-  id: string
-  status: string
+const detectedFaces = ref<DetectedFace[]>([])
+const selectedFaceIndices = ref<number[]>([])
+const replacementFaces = ref<Record<number, { url: string; preview: string }>>({})
+const faceEnhance = ref(false)
+
+const taskModalVisible = ref(false)
+const currentTask = ref<{
+  task_id: string
+  status: 'queuing' | 'processing' | 'completed' | 'failed'
   result_url?: string
   error?: string
-}
+} | null>(null)
 
-const activeTab = ref('uploads')
-const mediaList = ref<MediaItem[]>([])
-const selectedMedia = ref<MediaItem | null>(null)
-const faceSlots = ref<FaceSlot[]>([
-  { face: null },
-  { face: null },
-  { face: null },
-  { face: null }
-])
-const selectedModel = ref('shapefusion')
-const hdFace = ref(false)
-const processing = ref(false)
-const taskModalVisible = ref(false)
-const currentTask = ref<SwapTask | null>(null)
-
-const models = [
-  { value: 'shapefusion', label: 'ShapeFusion', tag: 'NEW', tagColor: 'green' },
-  { value: 'shapetransformer_v3', label: 'ShapeTransformer V3.1' },
-  { value: 'shapetransformer_v2', label: 'ShapeTransformer V2.0' },
-  { value: 'shapekeeper_hd', label: 'ShapeKeeper HD' },
-  { value: 'shapekeeper', label: 'ShapeKeeper' }
-]
-
-const activeFaces = computed(() => faceSlots.value.filter(s => s.face !== null))
-const canCreate = computed(() => selectedMedia.value && activeFaces.value.length > 0)
+// --- Computed ---
+const canCreate = computed(() => {
+  if (selectedFaceIndices.value.length === 0) return false
+  // Check all selected faces have replacement
+  return selectedFaceIndices.value.every(idx => replacementFaces.value[idx])
+})
 
 const taskStatusText = computed(() => {
   if (!currentTask.value) return ''
   switch (currentTask.value.status) {
+    case 'queuing':
+      return '任务排队中...'
     case 'processing':
-      return '正在处理中，请稍候...'
+      return '正在处理视频，请稍候...'
     case 'completed':
       return '处理完成！'
     case 'failed':
@@ -227,250 +278,543 @@ const taskStatusText = computed(() => {
   }
 })
 
-const selectMedia = (item: MediaItem) => {
-  selectedMedia.value = item
+// --- Video Handlers ---
+const handleVideoUpload = async (file: File) => {
+  uploading.value = true
+  try {
+    // Create local preview
+    videoUrl.value = URL.createObjectURL(file)
+
+    // Upload to server
+    const { data } = await faceswapApiV2.uploadMedia(file)
+    videoPublicUrl.value = data.url
+    message.success('视频上传成功')
+  } catch (error) {
+    message.error('视频上传失败')
+    videoUrl.value = ''
+  } finally {
+    uploading.value = false
+  }
+  return false
 }
 
-const handleUpload = async (file: File) => {
-  try {
-    const { data } = await faceswapApi.upload(file)
-    const newItem: MediaItem = {
-      id: data.media_id,
-      name: file.name,
-      type: file.type.startsWith('video/') ? 'video' : 'image',
-      url: URL.createObjectURL(file),
-      thumbnail: URL.createObjectURL(file),
-      duration: file.type.startsWith('video/') ? '--:--' : undefined
+const onVideoLoaded = () => {
+  if (videoRef.value) {
+    duration.value = videoRef.value.duration
+  }
+}
+
+const onTimeUpdate = () => {
+  if (videoRef.value) {
+    currentTime.value = videoRef.value.currentTime
+  }
+}
+
+const seekVideo = (time: number) => {
+  if (videoRef.value) {
+    videoRef.value.currentTime = time
+  }
+}
+
+const formatTime = (seconds: number) => {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, '0')}`
+}
+
+const clearVideo = () => {
+  videoUrl.value = ''
+  videoPublicUrl.value = ''
+  detectedFaces.value = []
+  selectedFaceIndices.value = []
+  replacementFaces.value = {}
+  frameImageUrl.value = ''
+  detectId.value = ''
+}
+
+// --- Face Detection ---
+const captureFrame = (): Promise<Blob> => {
+  return new Promise((resolve, reject) => {
+    if (!videoRef.value) {
+      reject(new Error('No video'))
+      return
     }
-    mediaList.value.unshift(newItem)
-    selectedMedia.value = newItem
-    message.success('上传成功')
+
+    const video = videoRef.value
+    const canvas = document.createElement('canvas')
+    canvas.width = video.videoWidth
+    canvas.height = video.videoHeight
+
+    const ctx = canvas.getContext('2d')
+    if (!ctx) {
+      reject(new Error('Cannot get canvas context'))
+      return
+    }
+
+    ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
+    canvas.toBlob(
+      (blob) => {
+        if (blob) {
+          resolve(blob)
+        } else {
+          reject(new Error('Failed to capture frame'))
+        }
+      },
+      'image/jpeg',
+      0.95
+    )
+  })
+}
+
+const detectFaces = async () => {
+  detecting.value = true
+  try {
+    // Capture current frame
+    const frameBlob = await captureFrame()
+
+    // Upload frame and detect faces
+    const { data } = await faceswapApiV2.detectFacesFromUpload(frameBlob)
+
+    if (data.code !== 0) {
+      throw new Error(data.msg || 'Detection failed')
+    }
+
+    if (!data.data?.faces.length) {
+      message.warning('未检测到人脸，请调整视频位置重试')
+      return
+    }
+
+    detectedFaces.value = data.data.faces
+    frameImageUrl.value = data.data.frame_image
+    detectId.value = data.data.detect_id || ''  // Save VModel detect_id
+    selectedFaceIndices.value = []
+    replacementFaces.value = {}
+
+    message.success(`检测到 ${data.data.faces.length} 张人脸`)
+  } catch (error: any) {
+    message.error('人脸检测失败: ' + (error.message || '未知错误'))
+  } finally {
+    detecting.value = false
+  }
+}
+
+const getFaceBoxStyle = (face: DetectedFace) => {
+  if (!face.bbox || !videoRef.value) return {}
+
+  const video = videoRef.value
+  const [x, y, w, h] = face.bbox
+
+  // Convert to percentage for responsive positioning
+  const scaleX = video.clientWidth / video.videoWidth
+  const scaleY = video.clientHeight / video.videoHeight
+
+  return {
+    left: `${x * scaleX}px`,
+    top: `${y * scaleY}px`,
+    width: `${w * scaleX}px`,
+    height: `${h * scaleY}px`
+  }
+}
+
+// --- Face Selection ---
+const toggleFaceSelection = (index: number) => {
+  const idx = selectedFaceIndices.value.indexOf(index)
+  if (idx === -1) {
+    selectedFaceIndices.value.push(index)
+  } else {
+    selectedFaceIndices.value.splice(idx, 1)
+    delete replacementFaces.value[index]
+  }
+}
+
+const handleReplacementUpload = async (faceIndex: number, file: File) => {
+  try {
+    const preview = URL.createObjectURL(file)
+    const { data } = await faceswapApiV2.uploadFace(file)
+
+    replacementFaces.value[faceIndex] = {
+      url: data.url,
+      preview
+    }
+    message.success('人脸照片上传成功')
   } catch (error) {
     message.error('上传失败')
   }
   return false
 }
 
-const openFaceSelector = (index: number) => {
-  // TODO: Open face selector modal
-  // For now, use a mock face
-  const mockFace = {
-    id: `face_${Date.now()}`,
-    thumbnail: 'https://via.placeholder.com/80'
-  }
-  faceSlots.value[index].face = mockFace
+const removeReplacementFace = (faceIndex: number) => {
+  delete replacementFaces.value[faceIndex]
 }
 
-const removeFace = (index: number) => {
-  faceSlots.value[index].face = null
-}
-
+// --- Create Task ---
 const handleCreate = async () => {
-  if (!selectedMedia.value || activeFaces.value.length === 0) return
+  if (!canCreate.value) return
 
   processing.value = true
   taskModalVisible.value = true
 
   try {
-    const faceIds = activeFaces.value.map(s => s.face!.id)
-    const { data } = await faceswapApi.swap(selectedMedia.value.id, faceIds, selectedModel.value)
-    currentTask.value = data
-
-    // Poll for task status
-    const pollInterval = setInterval(async () => {
-      try {
-        const { data: taskData } = await faceswapApi.getTask(currentTask.value!.id)
-        currentTask.value = taskData
-
-        if (taskData.status === 'completed' || taskData.status === 'failed') {
-          clearInterval(pollInterval)
-          processing.value = false
-        }
-      } catch (error) {
-        clearInterval(pollInterval)
-        processing.value = false
-        currentTask.value = { ...currentTask.value!, status: 'failed', error: '获取状态失败' }
+    // Build face swaps array with both VModel (face_id) and Akool (landmarks_str) fields
+    const faceSwaps = selectedFaceIndices.value.map(idx => {
+      const face = detectedFaces.value[idx]
+      return {
+        source_image_url: replacementFaces.value[idx].url,
+        face_id: face.face_id,                    // VModel: face ID
+        landmarks_str: face.landmarks_str || ''   // Akool legacy (optional)
       }
-    }, 2000)
-  } catch (error) {
+    })
+
+    // Create task with both VModel (detect_id) and Akool (frame_image_url) fields
+    const { data } = await faceswapApiV2.createSwapTask({
+      target_video_url: videoPublicUrl.value,
+      detect_id: detectId.value,           // VModel: detection ID
+      frame_image_url: frameImageUrl.value, // Akool legacy (optional)
+      face_swaps: faceSwaps,
+      face_enhance: faceEnhance.value
+    })
+
+    if (data.code !== 0) {
+      throw new Error(data.msg || 'Failed to create task')
+    }
+
+    currentTask.value = {
+      task_id: data.data!.task_id,
+      status: data.data!.status as any
+    }
+
+    // Start polling
+    pollTaskStatus(data.data!.task_id)
+  } catch (error: any) {
     processing.value = false
-    currentTask.value = { id: '', status: 'failed', error: '创建任务失败' }
+    currentTask.value = {
+      task_id: '',
+      status: 'failed',
+      error: error.message || '创建任务失败'
+    }
   }
+}
+
+const pollTaskStatus = async (taskId: string) => {
+  const poll = async () => {
+    try {
+      const { data } = await faceswapApiV2.getTaskStatus(taskId)
+
+      if (data.code !== 0) {
+        throw new Error(data.msg)
+      }
+
+      currentTask.value = data.data!
+
+      if (data.data!.status === 'completed' || data.data!.status === 'failed') {
+        processing.value = false
+        return
+      }
+
+      // Continue polling
+      setTimeout(poll, 3000)
+    } catch (error: any) {
+      processing.value = false
+      currentTask.value = {
+        task_id: taskId,
+        status: 'failed',
+        error: error.message || '获取状态失败'
+      }
+    }
+  }
+
+  poll()
+}
+
+const resetAll = () => {
+  clearVideo()
+  taskModalVisible.value = false
+  currentTask.value = null
 }
 </script>
 
 <style scoped>
 .faceswap-container {
-  height: calc(100vh - 64px - 48px - 48px);
+  padding: 24px;
+  min-height: calc(100vh - 64px);
 }
 
 .panel {
-  background: #f5f5f5;
+  background: #fff;
   border-radius: 8px;
-  padding: 16px;
+  padding: 20px;
   height: 100%;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.panel-header {
+.panel-title {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* Upload Area */
+.upload-area {
+  height: 400px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.upload-placeholder {
+  text-align: center;
+  padding: 60px;
+  border: 2px dashed #d9d9d9;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.3s;
+  width: 100%;
+}
+
+.upload-placeholder:hover {
+  border-color: #1890ff;
+}
+
+.upload-icon {
+  font-size: 48px;
+  color: #999;
   margin-bottom: 16px;
 }
 
-.panel-header h3 {
-  margin: 0;
+.upload-placeholder .hint {
+  color: #999;
+  font-size: 12px;
+}
+
+/* Video Section */
+.video-section {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.video-wrapper {
+  position: relative;
+  background: #000;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.video-player {
+  width: 100%;
+  max-height: 400px;
+  display: block;
+}
+
+.face-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+}
+
+.face-box {
+  position: absolute;
+  border: 2px solid #52c41a;
+  border-radius: 4px;
+  cursor: pointer;
+  pointer-events: auto;
+  transition: all 0.2s;
+}
+
+.face-box:hover {
+  border-color: #1890ff;
+  background: rgba(24, 144, 255, 0.1);
+}
+
+.face-box.selected {
+  border-color: #1890ff;
+  border-width: 3px;
+  background: rgba(24, 144, 255, 0.2);
+}
+
+.face-label {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: #52c41a;
+  color: white;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.face-box.selected .face-label {
+  background: #1890ff;
+}
+
+.video-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.control-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+}
+
+.detect-alert {
+  margin-top: 8px;
+}
+
+/* Face Config Panel */
+.face-config {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.section h4 {
+  margin: 0 0 12px 0;
   font-size: 14px;
   color: #666;
 }
 
-.media-list {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 8px;
-  max-height: 400px;
-  overflow-y: auto;
-  margin-bottom: 16px;
-}
-
-.media-item {
-  position: relative;
-  aspect-ratio: 1;
-  border-radius: 8px;
-  overflow: hidden;
-  cursor: pointer;
-  border: 2px solid transparent;
-}
-
-.media-item.active {
-  border-color: #1890ff;
-}
-
-.media-item img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-}
-
-.media-item .duration {
-  position: absolute;
-  bottom: 4px;
-  left: 4px;
-  background: rgba(0, 0, 0, 0.6);
-  color: white;
-  font-size: 12px;
-  padding: 2px 6px;
-  border-radius: 4px;
-}
-
-.preview-panel {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: #000;
-}
-
-.preview-content {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.preview-video,
-.preview-image {
-  max-width: 100%;
-  max-height: 100%;
-  object-fit: contain;
-}
-
 .face-grid {
   display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 12px;
-  margin-bottom: 24px;
 }
 
-.face-slot {
-  aspect-ratio: 1;
-  border: 2px dashed #d9d9d9;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  cursor: pointer;
+.face-card {
   position: relative;
+  aspect-ratio: 1;
+  border: 2px solid #d9d9d9;
+  border-radius: 8px;
+  cursor: pointer;
   overflow: hidden;
-  transition: all 0.3s;
+  transition: all 0.2s;
 }
 
-.face-slot:hover {
+.face-card:hover {
   border-color: #1890ff;
 }
 
-.face-slot img {
+.face-card.selected {
+  border-color: #1890ff;
+  border-width: 3px;
+}
+
+.face-thumbnail {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #f5f5f5;
+}
+
+.face-thumbnail img {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
 
-.face-slot .add-icon {
+.face-number {
   font-size: 24px;
+  font-weight: bold;
   color: #999;
 }
 
-.face-slot .remove-btn {
+.face-card .check-icon {
   position: absolute;
-  top: 0;
-  right: 0;
-  background: rgba(0, 0, 0, 0.5);
-  color: white;
+  top: 4px;
+  right: 4px;
+  font-size: 20px;
+  color: #1890ff;
+}
+
+/* Replacement Section */
+.replacement-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.replacement-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.original-face {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.original-face .label {
+  font-size: 12px;
+  color: #666;
+}
+
+.arrow {
+  color: #999;
+}
+
+.uploaded-face {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  overflow: hidden;
+  cursor: pointer;
+}
+
+.uploaded-face img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.uploaded-face .remove-btn {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  font-size: 18px;
+  color: #ff4d4f;
+  background: white;
   border-radius: 50%;
 }
 
-.model-section {
-  margin-bottom: 16px;
-}
-
-.section-header {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-  font-weight: 500;
-}
-
-.model-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-
-.model-item {
-  text-align: left;
-  border-radius: 4px;
-}
-
-.hd-section {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 24px;
-  padding: 12px;
-  background: #fff;
-  border-radius: 8px;
-}
-
+/* Task Modal */
 .task-status {
   text-align: center;
   padding: 24px;
 }
 
 .task-status .success-icon {
-  font-size: 48px;
+  font-size: 64px;
   color: #52c41a;
 }
 
 .task-status .error-icon {
-  font-size: 48px;
+  font-size: 64px;
   color: #ff4d4f;
+}
+
+.status-text {
+  margin: 16px 0;
+  font-size: 16px;
+}
+
+.result-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 </style>

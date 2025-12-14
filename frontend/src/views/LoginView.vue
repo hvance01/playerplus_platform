@@ -13,49 +13,39 @@
         class="login-form"
       >
         <a-form-item
-          label="邮箱"
-          name="email"
-          :rules="[
-            { required: true, message: '请输入邮箱' },
-            { type: 'email', message: '请输入有效的邮箱地址' },
-            { validator: validateDomain }
-          ]"
+          label="用户名"
+          name="username"
+          :rules="[{ required: true, message: '请输入用户名' }]"
         >
           <a-input
-            v-model:value="formState.email"
-            placeholder="请输入 @playerplus.cn 邮箱"
+            v-model:value="formState.username"
+            placeholder="请输入用户名"
             size="large"
           />
         </a-form-item>
 
-        <a-form-item v-if="codeSent" label="验证码" name="code" :rules="[{ required: true, message: '请输入验证码' }]">
-          <a-input
-            v-model:value="formState.code"
-            placeholder="请输入6位验证码"
+        <a-form-item
+          label="密码"
+          name="password"
+          :rules="[{ required: true, message: '请输入密码' }]"
+        >
+          <a-input-password
+            v-model:value="formState.password"
+            placeholder="请输入密码"
             size="large"
-            maxlength="6"
           />
         </a-form-item>
 
         <a-form-item>
           <a-button
-            v-if="!codeSent"
             type="primary"
             html-type="submit"
             size="large"
             block
             :loading="loading"
           >
-            发送验证码
+            登录
           </a-button>
-          <a-space v-else direction="vertical" style="width: 100%">
-            <a-button type="primary" html-type="submit" size="large" block :loading="loading">
-              登录
-            </a-button>
-            <a-button type="link" block :disabled="countdown > 0" @click="resendCode">
-              {{ countdown > 0 ? `${countdown}秒后可重新发送` : '重新发送验证码' }}
-            </a-button>
-          </a-space>
         </a-form-item>
       </a-form>
     </div>
@@ -73,60 +63,21 @@ const router = useRouter()
 const authStore = useAuthStore()
 
 const formState = reactive({
-  email: '',
-  code: ''
+  username: '',
+  password: ''
 })
 
 const loading = ref(false)
-const codeSent = ref(false)
-const countdown = ref(0)
-
-const validateDomain = (_rule: any, value: string) => {
-  if (value && !value.toLowerCase().endsWith('@playerplus.cn')) {
-    return Promise.reject('只允许 @playerplus.cn 域名邮箱')
-  }
-  return Promise.resolve()
-}
-
-const startCountdown = () => {
-  countdown.value = 60
-  const timer = setInterval(() => {
-    countdown.value--
-    if (countdown.value <= 0) {
-      clearInterval(timer)
-    }
-  }, 1000)
-}
 
 const handleSubmit = async () => {
   loading.value = true
   try {
-    if (!codeSent.value) {
-      await authApi.sendCode(formState.email)
-      codeSent.value = true
-      startCountdown()
-      message.success('验证码已发送到您的邮箱')
-    } else {
-      const { data } = await authApi.verify(formState.email, formState.code)
-      authStore.setAuth(data.token, formState.email)
-      message.success('登录成功')
-      router.push('/')
-    }
+    const { data } = await authApi.login(formState.username, formState.password)
+    authStore.setAuth(data.token, data.user)
+    message.success('登录成功')
+    router.push('/')
   } catch (error: any) {
-    message.error(error.response?.data?.error || '操作失败')
-  } finally {
-    loading.value = false
-  }
-}
-
-const resendCode = async () => {
-  loading.value = true
-  try {
-    await authApi.sendCode(formState.email)
-    startCountdown()
-    message.success('验证码已重新发送')
-  } catch (error: any) {
-    message.error(error.response?.data?.error || '发送失败')
+    message.error(error.response?.data?.error || '登录失败')
   } finally {
     loading.value = false
   }
