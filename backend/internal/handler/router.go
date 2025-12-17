@@ -90,8 +90,21 @@ func setupStaticFiles(r *gin.Engine) {
 	}
 	indexFile.Close()
 
-	// Serve static files
-	r.StaticFS("/assets", http.FS(staticFS))
+	// Serve assets from the assets subdirectory
+	assetsFS, err := fs.Sub(staticFS, "assets")
+	if err == nil {
+		r.StaticFS("/assets", http.FS(assetsFS))
+	}
+
+	// Serve vite.svg and other root static files
+	r.GET("/vite.svg", func(c *gin.Context) {
+		content, err := fs.ReadFile(staticFS, "vite.svg")
+		if err != nil {
+			c.String(http.StatusNotFound, "Not Found")
+			return
+		}
+		c.Data(http.StatusOK, "image/svg+xml", content)
+	})
 
 	// SPA fallback - serve index.html for all non-API routes
 	r.NoRoute(func(c *gin.Context) {
