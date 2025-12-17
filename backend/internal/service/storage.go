@@ -261,8 +261,13 @@ func (s *StorageService) GetPublicURL(key string) string {
 		// Use public URL format
 		publicURL := s.cfg.StoragePublicURL
 		if publicURL != "" {
-			// R2.dev public URLs are already bucket-scoped, don't append bucketName
-			if strings.Contains(publicURL, "r2.dev") {
+			// R2.dev and Qiniu CDN URLs are already bucket-scoped, don't append bucketName
+			if strings.Contains(publicURL, "r2.dev") ||
+				strings.Contains(publicURL, "clouddn.com") ||
+				strings.Contains(publicURL, "qiniucdn.com") ||
+				strings.Contains(publicURL, "qnssl.com") ||
+				strings.Contains(publicURL, "qbox.me") ||
+				strings.Contains(publicURL, "qiniucs.com") {
 				return fmt.Sprintf("%s/%s", strings.TrimSuffix(publicURL, "/"), key)
 			}
 			// Standard MinIO/S3 behavior: append bucket name
