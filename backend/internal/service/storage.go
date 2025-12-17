@@ -261,6 +261,11 @@ func (s *StorageService) GetPublicURL(key string) string {
 		// Use public URL format
 		publicURL := s.cfg.StoragePublicURL
 		if publicURL != "" {
+			// R2.dev public URLs are already bucket-scoped, don't append bucketName
+			if strings.Contains(publicURL, "r2.dev") {
+				return fmt.Sprintf("%s/%s", strings.TrimSuffix(publicURL, "/"), key)
+			}
+			// Standard MinIO/S3 behavior: append bucket name
 			return fmt.Sprintf("%s/%s/%s", strings.TrimSuffix(publicURL, "/"), s.bucketName, key)
 		}
 		// Fallback to endpoint
