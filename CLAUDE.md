@@ -55,9 +55,12 @@ playerplus_platform/
 
 | Service | Description | Endpoint |
 |---------|-------------|----------|
+| playerplus-backend | Go 后端 + Vue 前端 | `platform.playerplus.cn` |
 | PostgreSQL | 主数据库 | `nozomi.proxy.rlwy.net:28246/railway` |
 | MinIO | S3兼容对象存储 | `bucket-production-acf6.up.railway.app` |
 | MinIO Console | 管理界面 | `console-production-fa67.up.railway.app` |
+
+**自定义域名**: `platform.playerplus.cn` (CNAME → `ordumf4h.up.railway.app`)
 
 ## Auth
 
@@ -81,11 +84,12 @@ playerplus_platform/
 - [x] 视频上传进度条显示
 - [x] 视频结果转存到 MinIO（解决 VModel CDN 国内访问问题）
 - [x] 存储缓存 TTL 机制（24小时自动清理）
+- [x] 转存进度状态（transferring 状态，转存完成后才显示成功）
+- [x] 自定义域名配置（platform.playerplus.cn）
 
 ### 🚧 进行中
 
 - [ ] 修复邮件验证码登录 (Resend API 配置)
-- [ ] 换脸任务创建 500 错误调试
 
 ### 📋 待开发
 

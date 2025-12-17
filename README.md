@@ -9,6 +9,8 @@ PlayerPlus 内部 AI 工具平台，提供视频换脸、Prompt 管理、AI 文�
 | P0 | 视频换脸 | ✅ 已完成 |
 | P0 | 上传进度条 | ✅ 已完成 |
 | P0 | 视频结果转存 | ✅ 已完成 |
+| P0 | 转存进度状态 | ✅ 已完成 |
+| P0 | 自定义域名 | ✅ 已完成 |
 | P0 | Prompt管理 | 🚧 待开发 |
 | P1 | LLM文案生成 | 🚧 待开发 |
 | P2 | 一键换装 / 批量处理 | 📋 计划中 |
@@ -43,8 +45,9 @@ make dev
 ```
 
 **访问地址：**
-- 前端: http://localhost:5173
-- 后端 API: http://localhost:8080/api
+- 🌐 生产环境: https://platform.playerplus.cn
+- 本地前端: http://localhost:5173
+- 本地后端 API: http://localhost:8080/api
 - 默认登录: `test` / `test`
 
 ## 常用命令
@@ -109,6 +112,12 @@ make build
 ```
 
 Railway 自动检测 `railway.json` 配置并构建部署。
+
+**生产环境地址：**
+- 主域名: https://platform.playerplus.cn
+- Railway 域名: https://playerplus-backend-production.up.railway.app
+
+详细部署指南见 [DEPLOYMENT.md](DEPLOYMENT.md)。
 
 ## 环境变量
 

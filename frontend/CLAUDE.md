@@ -142,7 +142,10 @@ server: {
 **关键功能**：
 - 上传进度条：使用 `a-progress` 组件显示上传百分比
 - 视频转存：后端自动将 VModel 结果转存到 MinIO
-- 轮询优化：等待 `transfer_status=completed` 后才停止轮询
+- 转存进度状态：`transferring` 状态时显示"正在转存视频到服务器..."
+- 轮询优化：`transferring` 状态时使用 2000ms 间隔，其他状态 3000ms
+- 转存失败处理：`transfer_status=failed` 时禁用下载按钮并显示警告
+- 类型复用：使用 `TaskStatusResponse['data']` 类型确保类型安全
 
 ### PromptsView.vue
 

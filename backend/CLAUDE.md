@@ -142,10 +142,24 @@ MinIO 存储服务：
 - `UploadFile()` - 上传文件到 MinIO
 - `GetPublicURL()` - 获取文件公网 URL
 - `DeleteFile()` - 删除文件
-- `TransferFromVModel()` - 异步转存 VModel 结果视频到 MinIO
-- `GetTransferStatus()` - 获取转存状态
+- `TransferFromVModel()` - 异步转存 VModel 结果视频到 MinIO（支持失败重试）
+- `GetTransferStatus()` - 获取转存状态（pending/completed/failed）
 - `CleanupExpiredCache()` - 清理过期缓存（24小时 TTL）
 - `StartCacheCleanupJob()` - 启动定时清理任务
+
+### 任务状态流转
+
+```
+queuing → processing → transferring → completed
+                    ↘ failed
+```
+
+**状态说明**：
+- `queuing` - 任务排队中
+- `processing` - VModel 正在处理
+- `transferring` - VModel 完成，正在转存到 MinIO
+- `completed` - 全部完成，可下载
+- `failed` - 处理失败
 
 ## 测试指南
 

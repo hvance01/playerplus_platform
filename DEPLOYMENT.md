@@ -22,9 +22,43 @@
 
 | 服务 | 地址 |
 |------|------|
-| 应用 | https://playerplus-backend-production.up.railway.app |
+| 应用（主域名） | https://platform.playerplus.cn |
+| 应用（Railway） | https://playerplus-backend-production.up.railway.app |
 | MinIO | https://bucket-production-acf6.up.railway.app |
 | MinIO Console | https://console-production-fa67.up.railway.app |
+
+## 自定义域名配置
+
+### 域名信息
+
+- **域名**: `platform.playerplus.cn`
+- **DNS 提供商**: 阿里云
+- **CNAME 值**: `ordumf4h.up.railway.app`
+
+### 配置步骤
+
+1. **Railway 添加自定义域名**
+   ```bash
+   railway domain platform.playerplus.cn -s playerplus-backend
+   ```
+
+2. **阿里云 DNS 配置**
+   - 记录类型: CNAME
+   - 主机记录: platform
+   - 记录值: ordumf4h.up.railway.app
+   - TTL: 600
+
+3. **验证配置**
+   ```bash
+   dig platform.playerplus.cn CNAME +short
+   # 期望: ordumf4h.up.railway.app.
+   ```
+
+### 备案说明
+
+- **ICP 备案**: 不需要（服务器在海外）
+- **公安备案**: 建议完成（面向国内用户）
+- **域名实名认证**: 必须（.cn 域名要求）
 
 ## 部署步骤
 
@@ -193,14 +227,14 @@ CMD ["./server"]
 ### 健康检查
 
 ```bash
-curl https://playerplus-backend-production.up.railway.app/api/health
+curl https://platform.playerplus.cn/api/health
 # 期望: {"status":"ok"}
 ```
 
 ### 登录测试
 
 ```bash
-curl -X POST https://playerplus-backend-production.up.railway.app/api/auth/login \
+curl -X POST https://platform.playerplus.cn/api/auth/login \
   -H "Content-Type: application/json" \
   -d '{"username":"test","password":"test"}'
 # 期望: {"token":"...","user":"test"}
