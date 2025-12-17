@@ -142,6 +142,10 @@ MinIO 存储服务：
 - `UploadFile()` - 上传文件到 MinIO
 - `GetPublicURL()` - 获取文件公网 URL
 - `DeleteFile()` - 删除文件
+- `TransferFromVModel()` - 异步转存 VModel 结果视频到 MinIO
+- `GetTransferStatus()` - 获取转存状态
+- `CleanupExpiredCache()` - 清理过期缓存（24小时 TTL）
+- `StartCacheCleanupJob()` - 启动定时清理任务
 
 ## 测试指南
 

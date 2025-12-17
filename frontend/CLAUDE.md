@@ -105,7 +105,7 @@ api.login(username, password)
 api.detectFaces(imageUrl)
 api.createFaceSwap(params)
 api.getFaceSwapTask(taskId)
-api.uploadMedia(file)
+api.uploadMedia(file, onProgress)  // 支持上传进度回调
 ```
 
 ## Vite 代理配置
@@ -131,13 +131,18 @@ server: {
 ### FaceSwapView.vue
 
 换脸功能主页面，流程：
-1. 上传视频/图片
+1. 上传视频/图片（带圆形进度条显示上传进度）
 2. 检测人脸（显示检测到的人脸列表）
 3. 选择要替换的人脸
 4. 上传替换用的人脸图片
 5. 创建换脸任务
-6. 轮询任务状态
-7. 显示/下载结果
+6. 轮询任务状态（包含视频转存状态）
+7. 显示/下载结果（从 MinIO 下载，解决 VModel CDN 国内访问问题）
+
+**关键功能**：
+- 上传进度条：使用 `a-progress` 组件显示上传百分比
+- 视频转存：后端自动将 VModel 结果转存到 MinIO
+- 轮询优化：等待 `transfer_status=completed` 后才停止轮询
 
 ### PromptsView.vue
 
