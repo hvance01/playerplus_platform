@@ -200,7 +200,7 @@
       width="400px"
     >
       <div class="task-status">
-        <a-spin v-if="currentTask?.status === 'queuing' || currentTask?.status === 'processing'" size="large" />
+        <a-spin v-if="currentTask?.status === 'queuing' || currentTask?.status === 'processing' || currentTask?.status === 'transferring'" size="large" />
         <check-circle-outlined v-else-if="currentTask?.status === 'completed'" class="success-icon" />
         <close-circle-outlined v-else-if="currentTask?.status === 'failed'" class="error-icon" />
 
@@ -261,9 +261,10 @@ const faceEnhance = ref(false)
 const taskModalVisible = ref(false)
 const currentTask = ref<{
   task_id: string
-  status: 'queuing' | 'processing' | 'completed' | 'failed'
+  status: 'queuing' | 'processing' | 'transferring' | 'completed' | 'failed'
   result_url?: string
   error?: string
+  transfer_status?: 'pending' | 'completed' | 'failed'
 } | null>(null)
 
 // --- Computed ---
@@ -280,7 +281,13 @@ const taskStatusText = computed(() => {
       return '任务排队中...'
     case 'processing':
       return '正在处理视频，请稍候...'
+    case 'transferring':
+      return '正在转存视频到服务器...'
     case 'completed':
+      // Check if transfer failed
+      if (currentTask.value.transfer_status === 'failed') {
+        return '处理完成，但视频转存失败，可能无法正常下载'
+      }
       return '处理完成！'
     case 'failed':
       return `处理失败: ${currentTask.value.error || '未知错误'}`
@@ -495,28 +502,24 @@ const pollTaskStatus = async (taskId: string) => {
 
       currentTask.value = data.data!
 
-      // Stop polling only when task is failed, or completed AND transfer is done
       const taskStatus = data.data!.status
-      const transferStatus = (data.data as any).transfer_status
 
+      // Stop polling when task is failed or completed
       if (taskStatus === 'failed') {
         processing.value = false
         return
       }
 
       if (taskStatus === 'completed') {
-        // If transfer is still pending, continue polling
-        if (transferStatus === 'pending') {
-          setTimeout(poll, 2000) // Poll faster for transfer
-          return
-        }
-        // Transfer completed or no transfer needed
+        // Task fully completed (including transfer)
         processing.value = false
         return
       }
 
-      // Continue polling
-      setTimeout(poll, 3000)
+      // Continue polling for queuing, processing, or transferring
+      // Use faster polling for transferring status
+      const pollInterval = taskStatus === 'transferring' ? 2000 : 3000
+      setTimeout(poll, pollInterval)
     } catch (error: any) {
       processing.value = false
       currentTask.value = {

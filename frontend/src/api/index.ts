@@ -84,9 +84,11 @@ export interface TaskStatusResponse {
   code: number
   data?: {
     task_id: string
-    status: 'queuing' | 'processing' | 'completed' | 'failed'
+    status: 'queuing' | 'processing' | 'transferring' | 'completed' | 'failed'
     result_url?: string
     error?: string
+    transfer_status?: 'pending' | 'completed' | 'failed'
+    original_url?: string
   }
   msg?: string
 }

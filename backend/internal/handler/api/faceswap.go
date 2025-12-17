@@ -164,6 +164,7 @@ func getStatusFromVModel(c *gin.Context, taskID string) {
 	resultURL := result.ResultURL
 	transferStatus := ""
 	originalURL := ""
+	finalStatus := result.Status
 
 	if result.Status == "completed" && result.ResultURL != "" {
 		originalURL = result.ResultURL
@@ -175,12 +176,23 @@ func getStatusFromVModel(c *gin.Context, taskID string) {
 		if ts != nil {
 			transferStatus = ts.Status
 			if ts.Status == "completed" {
+				// Transfer done, use MinIO URL
 				resultURL = ts.MinioURL
+				finalStatus = "completed"
+			} else if ts.Status == "pending" {
+				// Transfer in progress, return "transferring" status
+				finalStatus = "transferring"
+			} else if ts.Status == "failed" {
+				// Transfer failed, still return completed but with original URL
+				// User can try to access original URL or retry
+				finalStatus = "completed"
+				transferStatus = "failed"
 			}
 		} else {
-			// Not started yet, start it
+			// Not started yet, start it and return "transferring"
 			storage.TransferFromVModel(taskID, result.ResultURL)
 			transferStatus = "pending"
+			finalStatus = "transferring"
 		}
 	}
 
@@ -195,7 +207,7 @@ func getStatusFromVModel(c *gin.Context, taskID string) {
 			OriginalURL    string `json:"original_url,omitempty"`
 		}{
 			TaskID:         result.TaskID,
-			Status:         result.Status,
+			Status:         finalStatus,
 			ResultURL:      resultURL,
 			Error:          result.Error,
 			TransferStatus: transferStatus,
