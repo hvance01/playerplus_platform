@@ -13,7 +13,10 @@
               :disabled="uploading"
             >
               <div class="upload-placeholder">
-                <a-spin v-if="uploading" />
+                <template v-if="uploading">
+                  <a-progress type="circle" :percent="uploadProgress" :width="80" />
+                  <p>正在上传视频...</p>
+                </template>
                 <template v-else>
                   <cloud-upload-outlined class="upload-icon" />
                   <p>点击或拖拽上传视频</p>
@@ -72,9 +75,9 @@
                   type="primary"
                   @click="detectFacesFromVideo"
                   :loading="detecting"
-                  :disabled="!videoPublicUrl || detecting"
+                  :disabled="!videoPublicUrl || detecting || uploading"
                 >
-                  <scan-outlined /> {{ detecting ? '检测中...' : '重新检测' }}
+                  <scan-outlined /> {{ detecting ? '检测中...' : '检测人脸' }}
                 </a-button>
               </div>
             </div>
@@ -246,6 +249,7 @@ const frameImageUrl = ref('')   // Frame used for detection
 const detectId = ref('')        // VModel detect_id for swap
 
 const uploading = ref(false)
+const uploadProgress = ref(0)
 const detecting = ref(false)
 const processing = ref(false)
 
@@ -288,19 +292,27 @@ const taskStatusText = computed(() => {
 // --- Video Handlers ---
 const handleVideoUpload = async (file: File) => {
   uploading.value = true
-  try {
-    // Create local preview
-    videoUrl.value = URL.createObjectURL(file)
+  uploadProgress.value = 0
 
-    // Upload to server
-    const { data } = await faceswapApiV2.uploadMedia(file)
+  // Store file for later use
+  const localPreviewUrl = URL.createObjectURL(file)
+
+  try {
+    // Upload to server with progress tracking
+    const { data } = await faceswapApiV2.uploadMedia(file, (progress) => {
+      uploadProgress.value = progress
+    })
+
+    // Set video URL only after upload completes
+    videoUrl.value = localPreviewUrl
     videoPublicUrl.value = data.url
     message.success('视频上传成功')
   } catch (error) {
     message.error('视频上传失败')
-    videoUrl.value = ''
+    URL.revokeObjectURL(localPreviewUrl) // Clean up
   } finally {
     uploading.value = false
+    uploadProgress.value = 0
   }
   return false
 }
@@ -483,7 +495,22 @@ const pollTaskStatus = async (taskId: string) => {
 
       currentTask.value = data.data!
 
-      if (data.data!.status === 'completed' || data.data!.status === 'failed') {
+      // Stop polling only when task is failed, or completed AND transfer is done
+      const taskStatus = data.data!.status
+      const transferStatus = (data.data as any).transfer_status
+
+      if (taskStatus === 'failed') {
+        processing.value = false
+        return
+      }
+
+      if (taskStatus === 'completed') {
+        // If transfer is still pending, continue polling
+        if (transferStatus === 'pending') {
+          setTimeout(poll, 2000) // Poll faster for transfer
+          return
+        }
+        // Transfer completed or no transfer needed
         processing.value = false
         return
       }

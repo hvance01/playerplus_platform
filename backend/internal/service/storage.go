@@ -57,6 +57,9 @@ func GetStorageService() *StorageService {
 				log.Printf("Warning: Failed to init MinIO client: %v, using local storage", err)
 			}
 		}
+
+		// Start cache cleanup job
+		StartCacheCleanupJob()
 	})
 	return storageService
 }
@@ -282,4 +285,108 @@ func (s *StorageService) GetPresignedURL(ctx context.Context, key string, expiry
 	}
 
 	return url.String(), nil
+}
+
+// --- Video Transfer Cache ---
+
+type TransferStatus struct {
+	Status   string // pending, completed, failed
+	MinioURL string
+	Error    string
+}
+
+const (
+	TransferCacheTTL = 24 * time.Hour     // 转存缓存保留24小时
+	ResultFileTTL    = 7 * 24 * time.Hour // 结果文件保留7天
+)
+
+// TransferEntry wraps TransferStatus with timestamp
+type TransferEntry struct {
+	TransferStatus
+	CreatedAt time.Time
+}
+
+var transferCache = sync.Map{}
+
+// TransferFromVModel transfers a video from VModel to MinIO asynchronously
+func (s *StorageService) TransferFromVModel(taskID, vmodelURL string) {
+	if _, exists := transferCache.Load(taskID); exists {
+		return
+	}
+
+	// Mark as pending with timestamp
+	transferCache.Store(taskID, TransferEntry{
+		TransferStatus: TransferStatus{Status: "pending"},
+		CreatedAt:      time.Now(),
+	})
+
+	go func() {
+		key := s.GenerateKey("results", taskID+".mp4")
+		url, err := s.UploadFromURL(context.Background(), vmodelURL, key)
+		if err != nil {
+			log.Printf("Failed to transfer video for task %s: %v", taskID, err)
+			transferCache.Store(taskID, TransferEntry{
+				TransferStatus: TransferStatus{Status: "failed", Error: err.Error()},
+				CreatedAt:      time.Now(),
+			})
+			return
+		}
+		transferCache.Store(taskID, TransferEntry{
+			TransferStatus: TransferStatus{Status: "completed", MinioURL: url},
+			CreatedAt:      time.Now(),
+		})
+	}()
+}
+
+// GetTransferredURL returns the MinIO URL if transfer is completed
+func (s *StorageService) GetTransferredURL(taskID string) string {
+	if val, ok := transferCache.Load(taskID); ok {
+		entry := val.(TransferEntry)
+		if entry.Status == "completed" {
+			return entry.MinioURL
+		}
+	}
+	return ""
+}
+
+// IsTransferring returns true if the task is currently being transferred
+func (s *StorageService) IsTransferring(taskID string) bool {
+	if val, ok := transferCache.Load(taskID); ok {
+		entry := val.(TransferEntry)
+		return entry.Status == "pending"
+	}
+	return false
+}
+
+// GetTransferStatus returns the full transfer status
+func (s *StorageService) GetTransferStatus(taskID string) *TransferStatus {
+	if val, ok := transferCache.Load(taskID); ok {
+		entry := val.(TransferEntry)
+		return &entry.TransferStatus
+	}
+	return nil
+}
+
+// CleanupExpiredCache removes expired entries from transfer cache
+func CleanupExpiredCache() {
+	now := time.Now()
+	transferCache.Range(func(key, value interface{}) bool {
+		entry := value.(TransferEntry)
+		if now.Sub(entry.CreatedAt) > TransferCacheTTL {
+			transferCache.Delete(key)
+			log.Printf("Cleaned up expired transfer cache: %s", key)
+		}
+		return true
+	})
+}
+
+// StartCacheCleanupJob starts a background job to clean up expired cache
+func StartCacheCleanupJob() {
+	go func() {
+		ticker := time.NewTicker(1 * time.Hour)
+		defer ticker.Stop()
+		for range ticker.C {
+			CleanupExpiredCache()
+		}
+	}()
 }

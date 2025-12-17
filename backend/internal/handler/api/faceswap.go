@@ -34,10 +34,12 @@ type CreateFaceSwapResponse struct {
 type GetTaskStatusResponse struct {
 	Code int    `json:"code"`
 	Data *struct {
-		TaskID    string `json:"task_id"`
-		Status    string `json:"status"` // queuing, processing, completed, failed
-		ResultURL string `json:"result_url,omitempty"`
-		Error     string `json:"error,omitempty"`
+		TaskID         string `json:"task_id"`
+		Status         string `json:"status"` // queuing, processing, completed, failed
+		ResultURL      string `json:"result_url,omitempty"`
+		Error          string `json:"error,omitempty"`
+		TransferStatus string `json:"transfer_status,omitempty"` // pending, completed, failed
+		OriginalURL    string `json:"original_url,omitempty"`
 	} `json:"data,omitempty"`
 	Msg string `json:"msg,omitempty"`
 }
@@ -131,10 +133,12 @@ func GetFaceSwapTaskStatus(c *gin.Context) {
 	c.JSON(http.StatusOK, GetTaskStatusResponse{
 		Code: 0,
 		Data: &struct {
-			TaskID    string `json:"task_id"`
-			Status    string `json:"status"`
-			ResultURL string `json:"result_url,omitempty"`
-			Error     string `json:"error,omitempty"`
+			TaskID         string `json:"task_id"`
+			Status         string `json:"status"`
+			ResultURL      string `json:"result_url,omitempty"`
+			Error          string `json:"error,omitempty"`
+			TransferStatus string `json:"transfer_status,omitempty"`
+			OriginalURL    string `json:"original_url,omitempty"`
 		}{
 			TaskID:    taskID,
 			Status:    "completed",
@@ -156,18 +160,46 @@ func getStatusFromVModel(c *gin.Context, taskID string) {
 		return
 	}
 
+	// Handle video transfer logic
+	resultURL := result.ResultURL
+	transferStatus := ""
+	originalURL := ""
+
+	if result.Status == "completed" && result.ResultURL != "" {
+		originalURL = result.ResultURL
+		storage := service.GetStorageService()
+
+		// Check transfer status
+		ts := storage.GetTransferStatus(taskID)
+
+		if ts != nil {
+			transferStatus = ts.Status
+			if ts.Status == "completed" {
+				resultURL = ts.MinioURL
+			}
+		} else {
+			// Not started yet, start it
+			storage.TransferFromVModel(taskID, result.ResultURL)
+			transferStatus = "pending"
+		}
+	}
+
 	c.JSON(http.StatusOK, GetTaskStatusResponse{
 		Code: 0,
 		Data: &struct {
-			TaskID    string `json:"task_id"`
-			Status    string `json:"status"`
-			ResultURL string `json:"result_url,omitempty"`
-			Error     string `json:"error,omitempty"`
+			TaskID         string `json:"task_id"`
+			Status         string `json:"status"`
+			ResultURL      string `json:"result_url,omitempty"`
+			Error          string `json:"error,omitempty"`
+			TransferStatus string `json:"transfer_status,omitempty"`
+			OriginalURL    string `json:"original_url,omitempty"`
 		}{
-			TaskID:    result.TaskID,
-			Status:    result.Status,
-			ResultURL: result.ResultURL,
-			Error:     result.Error,
+			TaskID:         result.TaskID,
+			Status:         result.Status,
+			ResultURL:      resultURL,
+			Error:          result.Error,
+			TransferStatus: transferStatus,
+			OriginalURL:    originalURL,
 		},
 	})
 }

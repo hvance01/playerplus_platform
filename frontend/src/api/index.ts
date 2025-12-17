@@ -94,12 +94,18 @@ export interface TaskStatusResponse {
 // V2 APIs (VModel integration)
 export const faceswapApiV2 = {
   // Upload video/image
-  uploadMedia: (file: File) => {
+  uploadMedia: (file: File, onProgress?: (percent: number) => void) => {
     const formData = new FormData()
     formData.append('file', file)
     return api.post<{ url: string; key: string }>('/v2/media/upload', formData, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      timeout: 300000 // 5 min for large videos
+      timeout: 300000, // 5 min for large videos
+      onUploadProgress: (progressEvent) => {
+        if (onProgress && progressEvent.total) {
+          const percent = Math.round((progressEvent.loaded * 100) / progressEvent.total)
+          onProgress(percent)
+        }
+      }
     })
   },
 
