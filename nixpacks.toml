@@ -2,7 +2,7 @@
 # Requires both Node.js (for frontend) and Go (for backend)
 
 [phases.setup]
-nixPkgs = ["nodejs_20", "go_1_22", "pnpm"]
+nixPkgs = ["nodejs", "go", "pnpm"]
 
 [phases.build]
 cmds = [
