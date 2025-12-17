@@ -82,11 +82,25 @@ func setupStaticFiles(r *gin.Engine) {
 		return
 	}
 
+	// Check if index.html exists
+	indexFile, err := staticFS.Open("index.html")
+	if err != nil {
+		// No index.html found
+		return
+	}
+	indexFile.Close()
+
 	// Serve static files
 	r.StaticFS("/assets", http.FS(staticFS))
 
 	// SPA fallback - serve index.html for all non-API routes
 	r.NoRoute(func(c *gin.Context) {
-		c.FileFromFS("index.html", http.FS(staticFS))
+		// Read index.html content and serve it directly
+		content, err := fs.ReadFile(staticFS, "index.html")
+		if err != nil {
+			c.String(http.StatusNotFound, "Not Found")
+			return
+		}
+		c.Data(http.StatusOK, "text/html; charset=utf-8", content)
 	})
 }
