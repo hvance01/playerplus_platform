@@ -1,0 +1,16 @@
+# Nixpacks configuration for Railway deployment
+# Requires both Node.js (for frontend) and Go (for backend)
+
+[phases.setup]
+nixPkgs = ["nodejs_20", "go_1_22", "pnpm"]
+
+[phases.build]
+cmds = [
+    "cd frontend && pnpm install && pnpm build",
+    "mkdir -p backend/internal/handler/dist",
+    "cp -r frontend/dist/* backend/internal/handler/dist/",
+    "cd backend && go build -o server ./cmd/server"
+]
+
+[start]
+cmd = "./backend/server"
