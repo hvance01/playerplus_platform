@@ -309,9 +309,16 @@ type TransferEntry struct {
 var transferCache = sync.Map{}
 
 // TransferFromVModel transfers a video from VModel to MinIO asynchronously
+// If a previous transfer failed, it will retry the transfer
 func (s *StorageService) TransferFromVModel(taskID, vmodelURL string) {
-	if _, exists := transferCache.Load(taskID); exists {
-		return
+	if val, exists := transferCache.Load(taskID); exists {
+		entry := val.(TransferEntry)
+		// Allow retry if previous transfer failed
+		if entry.Status != "failed" {
+			return
+		}
+		// Clear failed entry to allow retry
+		transferCache.Delete(taskID)
 	}
 
 	// Mark as pending with timestamp

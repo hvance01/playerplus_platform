@@ -207,7 +207,12 @@
         <p class="status-text">{{ taskStatusText }}</p>
 
         <div v-if="currentTask?.status === 'completed'" class="result-actions">
-          <a-button type="primary" :href="currentTask.result_url" target="_blank">
+          <a-button
+            type="primary"
+            :href="currentTask.result_url"
+            target="_blank"
+            :disabled="currentTask.transfer_status === 'failed'"
+          >
             <download-outlined /> 下载结果视频
           </a-button>
           <a-button @click="resetAll">处理新视频</a-button>
@@ -237,7 +242,7 @@ import {
   CloseCircleOutlined,
   DownloadOutlined
 } from '@ant-design/icons-vue'
-import { faceswapApiV2, type DetectedFace } from '@/api'
+import { faceswapApiV2, type DetectedFace, type TaskStatusResponse } from '@/api'
 
 // --- State ---
 const videoRef = ref<HTMLVideoElement | null>(null)
@@ -259,13 +264,8 @@ const replacementFaces = ref<Record<number, { url: string; preview: string }>>({
 const faceEnhance = ref(false)
 
 const taskModalVisible = ref(false)
-const currentTask = ref<{
-  task_id: string
-  status: 'queuing' | 'processing' | 'transferring' | 'completed' | 'failed'
-  result_url?: string
-  error?: string
-  transfer_status?: 'pending' | 'completed' | 'failed'
-} | null>(null)
+// Reuse TaskStatusResponse type from API for type safety
+const currentTask = ref<TaskStatusResponse['data'] | null>(null)
 
 // --- Computed ---
 const canCreate = computed(() => {
