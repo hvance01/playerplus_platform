@@ -80,12 +80,17 @@ func CreateFaceSwapTask(c *gin.Context) {
 
 // createSwapWithVModel creates swap task using VModel API
 func createSwapWithVModel(c *gin.Context, req *CreateFaceSwapRequest) {
-	// Build face swap pairs
+	// Get storage service for URL conversion
+	storage := service.GetStorageService()
+
+	// Build face swap pairs with direct URLs for VModel access
 	faceSwaps := make([]service.VModelFaceSwapPair, len(req.FaceSwaps))
 	for i, swap := range req.FaceSwaps {
+		// Convert CDN URL to direct R2 URL for VModel API access
+		directURL := storage.ConvertToDirectURL(swap.SourceImageURL)
 		faceSwaps[i] = service.VModelFaceSwapPair{
 			FaceID: swap.FaceID,
-			Target: swap.SourceImageURL,
+			Target: directURL,
 		}
 	}
 
