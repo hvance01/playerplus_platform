@@ -65,8 +65,14 @@
 
               <!-- Detection progress -->
               <div v-if="detecting" class="detect-progress">
-                <a-spin size="small" />
-                <span>正在分析视频中的人脸，请稍候...</span>
+                <a-progress
+                  :percent="detectProgress"
+                  status="active"
+                  :show-info="false"
+                  :stroke-width="6"
+                  style="width: 200px"
+                />
+                <span style="margin-left: 8px">{{ detectProgressText }}</span>
               </div>
 
               <div class="control-buttons">
@@ -74,12 +80,17 @@
                   <delete-outlined /> 重新上传
                 </a-button>
                 <a-button
-                  type="primary"
-                  @click="detectFacesFromVideo"
-                  :loading="detecting"
-                  :disabled="!videoPublicUrl || detecting || uploading"
+                  :type="detecting ? 'default' : 'primary'"
+                  :danger="detecting"
+                  @click="handleDetectButtonClick"
+                  :disabled="!videoPublicUrl || uploading"
                 >
-                  <scan-outlined /> {{ detecting ? '检测中...' : '检测人脸' }}
+                  <template v-if="detecting">
+                    <stop-outlined /> 取消检测
+                  </template>
+                  <template v-else>
+                    <scan-outlined /> 检测人脸
+                  </template>
                 </a-button>
               </div>
             </div>
@@ -250,7 +261,8 @@ import {
   ThunderboltOutlined,
   CheckCircleOutlined,
   CloseCircleOutlined,
-  DownloadOutlined
+  DownloadOutlined,
+  StopOutlined
 } from '@ant-design/icons-vue'
 import { faceswapApiV2, type DetectedFace, type TaskStatusResponse } from '@/api'
 
@@ -280,6 +292,17 @@ const currentTask = ref<TaskStatusResponse['data'] | null>(null)
 
 // Detection polling timer (for async face detection)
 const detectPollTimer = ref<number | null>(null)
+
+// Detection progress animation
+const detectProgress = ref(0)
+let progressInterval: number | null = null
+
+const detectProgressText = computed(() => {
+  if (detectProgress.value < 30) return '正在上传视频到检测服务...'
+  if (detectProgress.value < 60) return '正在分析视频中的人脸...'
+  if (detectProgress.value < 90) return '正在处理检测结果...'
+  return '即将完成...'
+})
 
 // --- Computed ---
 const canCreate = computed(() => {
@@ -341,10 +364,7 @@ const handleVideoUpload = async (file: File) => {
 const onVideoLoaded = () => {
   if (videoRef.value) {
     duration.value = videoRef.value.duration
-    // Auto detect faces from video after upload completes
-    if (videoPublicUrl.value) {
-      detectFacesFromVideo()
-    }
+    // User needs to click button to start detection
   }
 }
 
@@ -366,13 +386,42 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+// Progress animation helpers
+const startProgressAnimation = () => {
+  detectProgress.value = 0
+  progressInterval = window.setInterval(() => {
+    if (detectProgress.value < 90) {
+      detectProgress.value += Math.random() * 10
+    }
+  }, 500)
+}
+
+const stopProgressAnimation = () => {
+  if (progressInterval) {
+    clearInterval(progressInterval)
+    progressInterval = null
+  }
+  detectProgress.value = 0
+}
+
 // Cancel detection polling and reset detecting state
 const cancelDetectPolling = () => {
   if (detectPollTimer.value) {
     clearTimeout(detectPollTimer.value)
     detectPollTimer.value = null
   }
+  stopProgressAnimation()
   detecting.value = false
+}
+
+// Handle detect button click (start or cancel)
+const handleDetectButtonClick = () => {
+  if (detecting.value) {
+    cancelDetectPolling()
+    message.info('已取消人脸检测')
+  } else {
+    detectFacesFromVideo()
+  }
 }
 
 const clearVideo = () => {
@@ -400,12 +449,14 @@ const pollDetectStatus = async (taskId: string) => {
     const status = data.data?.status
 
     if (status === 'failed') {
+      stopProgressAnimation()
       detecting.value = false
       message.error('人脸检测失败: ' + (data.msg || '未知错误'))
       return
     }
 
     if (status === 'completed') {
+      stopProgressAnimation()
       detecting.value = false
 
       if (!data.data?.faces.length) {
@@ -425,6 +476,7 @@ const pollDetectStatus = async (taskId: string) => {
     // Still queuing or processing, continue polling
     detectPollTimer.value = window.setTimeout(() => pollDetectStatus(taskId), 2000)
   } catch (error: any) {
+    stopProgressAnimation()
     detecting.value = false
     message.error('人脸检测失败: ' + (error.message || '未知错误'))
   }
@@ -434,8 +486,9 @@ const pollDetectStatus = async (taskId: string) => {
 const detectFacesFromVideo = async () => {
   if (!videoPublicUrl.value || detecting.value) return
 
-  detecting.value = true
   cancelDetectPolling() // Cancel any existing polling
+  detecting.value = true
+  startProgressAnimation() // Start progress animation
 
   try {
     const { data } = await faceswapApiV2.detectFaces(videoPublicUrl.value)
@@ -451,9 +504,11 @@ const detectFacesFromVideo = async () => {
 
     // Check if mock mode (completed immediately)
     if (data.data?.status === 'completed') {
+      stopProgressAnimation()
+      detecting.value = false
+
       if (!data.data?.faces.length) {
         message.warning('视频中未检测到人脸，请确保视频中有清晰的人脸画面')
-        detecting.value = false
         return
       }
 
@@ -461,7 +516,6 @@ const detectFacesFromVideo = async () => {
       detectId.value = data.data.detect_id || ''
       selectedFaceIndices.value = []
       replacementFaces.value = {}
-      detecting.value = false
 
       message.success(`检测到 ${data.data.faces.length} 张人脸，请选择要替换的人脸`)
       return
@@ -474,6 +528,7 @@ const detectFacesFromVideo = async () => {
       throw new Error('No task_id returned')
     }
   } catch (error: any) {
+    stopProgressAnimation()
     detecting.value = false
     message.error('人脸检测失败: ' + (error.message || '未知错误'))
   }
