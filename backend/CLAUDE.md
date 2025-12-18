@@ -2,6 +2,8 @@
 
 后端开发指南，适用于 `playerplus_platform/backend` 目录。
 
+> 全局提示：无论当前对话位于哪个子目录，都必须遵守项目根目录 `CLAUDE.md` 中的“全局自动 Compact”规则（80% 阈值 + 重度操作后自检）。
+
 ## 架构概览
 
 采用 Go Clean Architecture，使用 **Gin** Web 框架：
@@ -100,8 +102,9 @@ go build -o bin/server ./cmd/server
     │   ├── /upload/face        # POST 上传人脸图像
     │   └── /upload/frame       # POST 上传视频帧
     ├── /face
-    │   ├── /detect             # POST 从 URL 检测人脸
-    │   └── /detect/upload      # POST 从上传文件检测人脸
+    │   ├── /detect             # POST 开始人脸检测（返回 task_id，异步）
+    │   ├── /detect/:task_id    # GET  轮询检测状态
+    │   └── /detect/upload      # POST 从上传文件开始检测（异步）
     └── /faceswap
         ├── /create             # POST 创建换脸任务
         └── /task/:id           # GET  获取任务状态
@@ -137,10 +140,17 @@ go build -o bin/server ./cmd/server
 ### VModel API (`service/vmodel.go`)
 
 换脸核心服务，包含：
-- `DetectFaces()` - 检测视频/图片中的人脸
-- `CreateFaceSwap()` - 创建换脸任务
-- `GetPredictionStatus()` - 查询任务状态
+- `CreateDetectTask()` - 创建人脸检测任务（异步，返回 task_id）
+- `GetDetectTaskStatus()` - 轮询检测任务状态
+- `DetectFaces()` - 同步检测人脸（内部使用，会阻塞等待完成）
+- `CreateSwapTask()` - 创建换脸任务
+- `GetTaskStatus()` - 查询换脸任务状态
 - `GetCredits()` - 查询 API 余额
+
+**重试机制**：
+- GET 请求自动重试（最多 3 次，指数退避 + 抖动）
+- POST 请求不重试（避免重复扣费）
+- 重试条件：网络错误、HTTP 5xx、429
 
 ### Storage (`service/storage.go`)
 
@@ -150,7 +160,10 @@ Cloudflare R2 存储服务：
 - `GetDirectURL()` - 获取 R2 直连 URL (VModel API 访问)
 - `ConvertToDirectURL()` - 将 CDN URL 转换为直连 URL
 - `DeleteFile()` - 删除文件
-- `TransferFromVModel()` - 异步转存 VModel 结果视频到 R2（支持失败重试）
+- `TransferFromVModel()` - 异步转存 VModel 结果视频到 R2
+  - 使用 per-task locking 防止重复转存
+  - 支持失败重试
+  - Panic recovery 防止卡在 pending 状态
 - `GetTransferStatus()` - 获取转存状态（pending/completed/failed）
 - `CleanupExpiredCache()` - 清理过期缓存（24小时 TTL）
 - `StartCacheCleanupJob()` - 启动定时清理任务

@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **PlayerPlus Platform** - 内部 AI 工具平台，提供视频换脸、Prompt 管理、AI 文案生成等能力。
 
+## 交互规则（全局自动 Compact）
+
+- Claude Code 必须持续关注 Claude 控制台的 context 使用指示。只要显示“已使用 ≥80% / 剩余 ≤20%”，就立刻执行一次 `Compact` 并向用户说明触发原因。
+- 每次执行高 context 消耗的操作（例如：粘贴或生成大段 diff/日志/测试输出、多文件长文、>300 token 的推理说明等）后，先自查一次 context 使用；若达到上述阈值立即 `Compact`，若未达到也需在接下来的两条回复内再次复查。
+- 除非用户明确要求“不要 compact”，否则本策略在整个仓库的任何会话中都必须优先生效，包括子目录（`backend/`, `frontend/` 等）的独立对话。
+
 ### 模块文档
 
 - **后端开发**: [backend/CLAUDE.md](backend/CLAUDE.md)
@@ -105,9 +111,12 @@ playerplus_platform/
 
 ## Auth
 
-- **当前**: 固定账号密码登录 (`test` / `test`)
-- **待修复**: 邮箱验证码登录，限制 `@playerplus.cn` 域名
-- Token 存储在 localStorage
+- **当前**: 邮箱验证码登录（Aliyun DirectMail）
+  - 限制 `@playerplus.cn` 域名
+  - 验证码有效期 10 分钟
+  - 重发冷却 5 分钟
+- **备用**: 固定账号密码登录 (`test` / `test`)
+- Token 存储在 localStorage，有效期 7 天
 
 ## Development Progress
 
@@ -130,10 +139,17 @@ playerplus_platform/
 - [x] VPS 全站反向代理（CN2 加速中国访问）
 - [x] 媒体 CDN 配置（cdn.playerplus.cn）
 - [x] VModel API 直连 R2（解决首次检测超时问题）
+- [x] 异步人脸检测重构（解决客户端 60s 超时问题）
+  - 后端返回 task_id 立即响应
+  - 前端轮询检测状态
+  - 支持 Mock 模式向后兼容
+- [x] 视频转存竞态条件修复（per-task locking）
+- [x] VModel API 重试机制（GET 请求指数退避）
+- [x] 邮箱验证码登录（Aliyun DirectMail）
 
 ### 🚧 进行中
 
-- [ ] 修复邮件验证码登录 (Resend API 配置)
+- [ ] 配置 Resend 邮件服务（备用）
 
 ### 📋 待开发
 
