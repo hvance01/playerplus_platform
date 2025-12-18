@@ -5,11 +5,11 @@ import (
 	"crypto/rand"
 	"errors"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
-	"github.com/resend/resend-go/v2"
+	"github.com/aliyun/alibaba-cloud-sdk-go/services/dm"
+	"playplus_platform/internal/config"
 	"playplus_platform/internal/repository"
 )
 
@@ -18,13 +18,19 @@ var (
 	codeStore = make(map[string]codeEntry)
 	codeMu    sync.RWMutex
 
-	resendClient *resend.Client
+	dmClient *dm.Client
 )
 
 func init() {
-	apiKey := os.Getenv("RESEND_API_KEY")
-	if apiKey != "" {
-		resendClient = resend.NewClient(apiKey)
+	cfg := config.Get()
+	if cfg.AliyunAccessKeyID != "" && cfg.AliyunAccessKeySecret != "" {
+		client, err := dm.NewClientWithAccessKey(cfg.AliyunEmailRegion, cfg.AliyunAccessKeyID, cfg.AliyunAccessKeySecret)
+		if err != nil {
+			fmt.Printf("[ERROR] Failed to create Aliyun DM client: %v\n", err)
+		} else {
+			dmClient = client
+			fmt.Printf("[INFO] Aliyun DirectMail client initialized\n")
+		}
 	}
 }
 
@@ -54,35 +60,39 @@ func SendVerificationCode(email string) error {
 		codeMu.Unlock()
 	}
 
-	// Send email via Resend
-	if resendClient != nil {
-		params := &resend.SendEmailRequest{
-			From:    "PlayerPlus <onboarding@resend.dev>", // 测试阶段使用 resend.dev，正式上线后改为 noreply@playerplus.cn
-			To:      []string{email},
-			Subject: "PlayerPlus 登录验证码",
-			Html: fmt.Sprintf(`
-				<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
-					<h2 style="color: #1890ff;">PlayerPlus Platform</h2>
-					<p>您好，</p>
-					<p>您的登录验证码是：</p>
-					<div style="background: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
-						<span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333;">%s</span>
-					</div>
-					<p>验证码有效期为 10 分钟，请勿泄露给他人。</p>
-					<p style="color: #999; font-size: 12px;">如果您没有请求此验证码，请忽略此邮件。</p>
+	// Send email via Aliyun DirectMail
+	if dmClient != nil {
+		cfg := config.Get()
+		request := dm.CreateSingleSendMailRequest()
+		request.Scheme = "https"
+		request.AccountName = cfg.AliyunEmailFrom
+		request.FromAlias = "PlayerPlus"
+		request.AddressType = "1"
+		request.ReplyToAddress = "false"
+		request.ToAddress = email
+		request.Subject = "PlayerPlus 登录验证码"
+		request.HtmlBody = fmt.Sprintf(`
+			<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto;">
+				<h2 style="color: #1890ff;">PlayerPlus Platform</h2>
+				<p>您好，</p>
+				<p>您的登录验证码是：</p>
+				<div style="background: #f5f5f5; padding: 20px; text-align: center; margin: 20px 0;">
+					<span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #333;">%s</span>
 				</div>
-			`, code),
-		}
+				<p>验证码有效期为 10 分钟，请勿泄露给他人。</p>
+				<p style="color: #999; font-size: 12px;">如果您没有请求此验证码，请忽略此邮件。</p>
+			</div>
+		`, code)
 
-		_, err := resendClient.Emails.Send(params)
+		_, err := dmClient.SingleSendMail(request)
 		if err != nil {
-			fmt.Printf("[ERROR] Failed to send email: %v\n", err)
+			fmt.Printf("[ERROR] Failed to send email via Aliyun: %v\n", err)
 			fmt.Printf("[DEV] Verification code for %s: %s\n", email, code)
 			return nil
 		}
-		fmt.Printf("[INFO] Verification code sent to %s\n", email)
+		fmt.Printf("[INFO] Verification code sent to %s via Aliyun DirectMail\n", email)
 	} else {
-		fmt.Printf("[DEV] Verification code for %s: %s\n", email, code)
+		fmt.Printf("[DEV] Verification code for %s: %s (Aliyun DM not configured)\n", email, code)
 	}
 
 	return nil

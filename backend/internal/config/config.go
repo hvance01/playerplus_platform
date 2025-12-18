@@ -33,8 +33,11 @@ type Config struct {
 	StoragePublicURL  string // Public URL for accessing stored files (CDN)
 	StorageDirectURL  string // Direct URL for external API access (bypassing CDN)
 
-	// Resend (Email)
-	ResendAPIKey string
+	// Aliyun DirectMail (Email)
+	AliyunAccessKeyID     string
+	AliyunAccessKeySecret string
+	AliyunEmailFrom       string // e.g., noreply@playerplus.cn
+	AliyunEmailRegion     string // e.g., cn-hangzhou
 }
 
 func Get() *Config {
@@ -59,8 +62,11 @@ func Get() *Config {
 			StoragePublicURL:  getEnv("STORAGE_PUBLIC_URL", ""),
 			StorageDirectURL:  getEnv("STORAGE_DIRECT_URL", ""),
 
-			// Resend
-			ResendAPIKey: os.Getenv("RESEND_API_KEY"),
+			// Aliyun DirectMail
+			AliyunAccessKeyID:     os.Getenv("ALIYUN_ACCESS_KEY_ID"),
+			AliyunAccessKeySecret: os.Getenv("ALIYUN_ACCESS_KEY_SECRET"),
+			AliyunEmailFrom:       getEnv("ALIYUN_EMAIL_FROM", "noreply@playerplus.cn"),
+			AliyunEmailRegion:     getEnv("ALIYUN_EMAIL_REGION", "cn-hangzhou"),
 		}
 	})
 	return cfg
