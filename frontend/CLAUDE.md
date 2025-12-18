@@ -2,6 +2,8 @@
 
 前端开发指南，适用于 `playerplus_platform/frontend` 目录。
 
+> 全局提示：无论当前对话位于哪个子目录，都必须遵守项目根目录 `CLAUDE.md` 中的“全局自动 Compact”规则（80% 阈值 + 重度操作后自检）。
+
 ## 技术栈
 
 - **框架**: Vue 3 + TypeScript

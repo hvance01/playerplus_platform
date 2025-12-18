@@ -1,0 +1,21 @@
+[Unit]
+Description=Railway Deploy Webhook Server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/railway-webhook
+ExecStart=/usr/bin/python3 /opt/railway-webhook/railway_webhook.py
+Restart=always
+RestartSec=5
+
+# 环境变量 - 请修改为实际值
+Environment=RAILWAY_API_TOKEN=your_railway_api_token_here
+Environment=RAILWAY_SERVICE_ID=4a60c1dd-be4b-4624-aecc-7c736a09b8ec
+Environment=RAILWAY_ENVIRONMENT_ID=a7f4ef40-9acc-4aef-8821-ca5092bbaf03
+Environment=WEBHOOK_SECRET=your_gitee_webhook_secret_here
+Environment=PORT=9000
+
+[Install]
+WantedBy=multi-user.target
