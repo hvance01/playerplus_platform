@@ -354,43 +354,74 @@ type TransferEntry struct {
 	CreatedAt time.Time
 }
 
-var transferCache = sync.Map{}
+var (
+	transferCache = sync.Map{}
+	transferLocks = sync.Map{} // Per-task locks to prevent duplicate transfers
+)
+
+// getTaskLock returns a lock for the given taskID (creates one if not exists)
+func getTaskLock(taskID string) *sync.Mutex {
+	lock, _ := transferLocks.LoadOrStore(taskID, &sync.Mutex{})
+	return lock.(*sync.Mutex)
+}
 
 // TransferFromVModel transfers a video from VModel to MinIO asynchronously
-// If a previous transfer failed, it will retry the transfer
+// Uses per-task lock to prevent duplicate transfers for the same taskID
 func (s *StorageService) TransferFromVModel(taskID, vmodelURL string) {
+	// Get per-task lock - different taskIDs can proceed concurrently
+	lock := getTaskLock(taskID)
+	lock.Lock()
+	defer lock.Unlock()
+
+	// Check if already exists
 	if val, exists := transferCache.Load(taskID); exists {
 		entry := val.(TransferEntry)
-		// Allow retry if previous transfer failed
 		if entry.Status != "failed" {
-			return
+			return // Already pending or completed
 		}
-		// Clear failed entry to allow retry
-		transferCache.Delete(taskID)
+		// Failed status - allow retry by continuing
 	}
 
-	// Mark as pending with timestamp
+	// Store pending entry
 	transferCache.Store(taskID, TransferEntry{
 		TransferStatus: TransferStatus{Status: "pending"},
 		CreatedAt:      time.Now(),
 	})
 
-	go func() {
-		key := s.GenerateKey("results", taskID+".mp4")
-		url, err := s.UploadFromURL(context.Background(), vmodelURL, key)
-		if err != nil {
-			log.Printf("Failed to transfer video for task %s: %v", taskID, err)
+	// Start transfer in goroutine
+	go s.doTransfer(taskID, vmodelURL)
+}
+
+// doTransfer performs the actual transfer with panic recovery
+func (s *StorageService) doTransfer(taskID, vmodelURL string) {
+	// Recover from panic to prevent stuck "pending" state
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Panic in transfer for task %s: %v", taskID, r)
 			transferCache.Store(taskID, TransferEntry{
-				TransferStatus: TransferStatus{Status: "failed", Error: err.Error()},
+				TransferStatus: TransferStatus{Status: "failed", Error: fmt.Sprintf("panic: %v", r)},
 				CreatedAt:      time.Now(),
 			})
-			return
 		}
+		// Clean up the per-task lock after transfer completes
+		transferLocks.Delete(taskID)
+	}()
+
+	key := s.GenerateKey("results", taskID+".mp4")
+	url, err := s.UploadFromURL(context.Background(), vmodelURL, key)
+	if err != nil {
+		log.Printf("Failed to transfer video for task %s: %v", taskID, err)
 		transferCache.Store(taskID, TransferEntry{
-			TransferStatus: TransferStatus{Status: "completed", MinioURL: url},
+			TransferStatus: TransferStatus{Status: "failed", Error: err.Error()},
 			CreatedAt:      time.Now(),
 		})
-	}()
+		return
+	}
+	transferCache.Store(taskID, TransferEntry{
+		TransferStatus: TransferStatus{Status: "completed", MinioURL: url},
+		CreatedAt:      time.Now(),
+	})
+	log.Printf("Successfully transferred video for task %s to MinIO", taskID)
 }
 
 // GetTransferredURL returns the MinIO URL if transfer is completed
