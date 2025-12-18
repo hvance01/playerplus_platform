@@ -1,0 +1,49 @@
+# Dependencies
+node_modules/
+frontend/node_modules/
+
+# Build outputs (will be rebuilt in Docker)
+frontend/dist/
+backend/bin/
+backend/internal/handler/dist/
+
+# Environment and secrets - CRITICAL: never include in Docker build
+.env
+.env.*
+*.env
+backend/.env
+*.pem
+*.key
+credentials.json
+secrets.json
+
+# Git
+.git/
+.gitignore
+.dockerignore
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Test files
+*.test
+coverage/
+testfile/
+
+# Logs
+*.log
+logs/
+
+# Temp
+tmp/
+temp/
+
+# Playwright test artifacts
+.playwright-mcp/

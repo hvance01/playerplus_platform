@@ -18,7 +18,16 @@ RUN go build -o server ./cmd/server
 # Stage 3: Final image
 FROM alpine:latest
 RUN apk --no-cache add ca-certificates tzdata
+
+# Create non-root user for security
+RUN adduser -D -u 1000 appuser
+
 WORKDIR /app
 COPY --from=backend-builder /app/backend/server ./server
+
+# Change ownership and switch to non-root user
+RUN chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8080
 CMD ["./server"]
