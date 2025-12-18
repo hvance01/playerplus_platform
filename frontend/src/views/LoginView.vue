@@ -87,7 +87,7 @@
               @click="handleResendCode"
               :disabled="countdown > 0 || sendingCode"
             >
-              {{ countdown > 0 ? `${countdown}秒后可重新发送` : '重新发送验证码' }}
+              {{ countdown > 0 ? `${Math.floor(countdown / 60)}:${String(countdown % 60).padStart(2, '0')}后可重新发送` : '重新发送验证码' }}
             </a-button>
             <a-button type="link" size="small" @click="handleReset">
               返回修改用户名
@@ -137,7 +137,7 @@ const startCountdown = () => {
     clearInterval(countdownTimer.value)
   }
 
-  countdown.value = 60
+  countdown.value = 300
   countdownTimer.value = window.setInterval(() => {
     countdown.value--
     if (countdown.value <= 0) {
