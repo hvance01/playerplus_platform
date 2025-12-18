@@ -19,6 +19,10 @@ frontend/
 │   │   └── index.ts         # Axios 配置和 API 调用
 │   ├── assets/              # 静态资源（CSS、图片）
 │   ├── components/          # 通用组件
+│   │   └── MarkdownViewer.vue  # Markdown 渲染组件
+│   ├── docs/                # 功能使用说明文档
+│   │   ├── faceswap.md      # 换脸功能使用说明
+│   │   └── prompts.md       # Prompt 管理使用说明
 │   ├── router/
 │   │   └── index.ts         # Vue Router 配置
 │   ├── stores/
@@ -126,11 +130,27 @@ server: {
 
 开发时前端请求 `/api/*` 会自动代理到后端 `localhost:8080`。
 
+## 通用组件
+
+### MarkdownViewer.vue
+
+Markdown 渲染组件，用于显示功能使用说明：
+- 使用 `marked` 库解析 Markdown
+- 使用 `DOMPurify` 防止 XSS 攻击
+- 支持完整的 Markdown 语法（标题、列表、代码块、表格等）
+
+使用方式：
+```vue
+<MarkdownViewer :content="markdownContent" />
+```
+
 ## 页面组件
 
 ### FaceSwapView.vue
 
-换脸功能主页面，流程：
+换脸功能主页面，包含两个 Tab：「视频换脸」和「使用说明」。
+
+**视频换脸流程**：
 1. 上传视频/图片（带圆形进度条显示上传进度）
 2. 检测人脸（显示检测到的人脸列表）
 3. 选择要替换的人脸
@@ -149,11 +169,15 @@ server: {
 
 ### PromptsView.vue
 
-Prompt 管理页面（待开发）：
+Prompt 管理页面，包含两个 Tab：「Prompt 管理」和「使用说明」。
+
+**计划功能**（待开发）：
 - Prompt 模板列表
 - 创建/编辑 Prompt
 - 变量占位符支持
 - 分类管理
+
+使用说明从 `docs/prompts.md` 加载。
 
 ## UI 组件库
 
@@ -172,6 +196,8 @@ Prompt 管理页面（待开发）：
 - `pinia@^2.1.7` - 状态管理
 - `ant-design-vue@^4.1.2` - UI 组件库
 - `axios@^1.6.7` - HTTP 客户端
+- `marked@^15.0.0` - Markdown 解析
+- `dompurify@^3.3.1` - XSS 防护
 
 ## 开发注意事项
 

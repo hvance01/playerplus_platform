@@ -1,5 +1,7 @@
 <template>
   <div class="faceswap-container">
+    <a-tabs v-model:activeKey="activeTab" class="main-tabs">
+      <a-tab-pane key="faceswap" tab="视频换脸">
     <a-row :gutter="24">
       <!-- Left: Video Upload & Preview -->
       <a-col :span="14">
@@ -190,6 +192,12 @@
       </a-col>
     </a-row>
 
+      </a-tab-pane>
+      <a-tab-pane key="guide" tab="使用说明">
+        <MarkdownViewer :content="guideContent" />
+      </a-tab-pane>
+    </a-tabs>
+
     <!-- Task Progress Modal -->
     <a-modal
       v-model:open="taskModalVisible"
@@ -229,6 +237,8 @@
 <script setup lang="ts">
 import { ref, computed } from 'vue'
 import { message } from 'ant-design-vue'
+import MarkdownViewer from '@/components/MarkdownViewer.vue'
+import guideContent from '@/docs/faceswap.md?raw'
 import {
   CloudUploadOutlined,
   ScanOutlined,
@@ -245,6 +255,7 @@ import {
 import { faceswapApiV2, type DetectedFace, type TaskStatusResponse } from '@/api'
 
 // --- State ---
+const activeTab = ref('faceswap')
 const videoRef = ref<HTMLVideoElement | null>(null)
 const videoUrl = ref('')
 const videoPublicUrl = ref('')  // URL for API access
@@ -833,5 +844,20 @@ const resetAll = () => {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* Tabs */
+.main-tabs {
+  background: #fff;
+  border-radius: 8px;
+  padding: 0 16px;
+}
+
+.main-tabs :deep(.ant-tabs-nav) {
+  margin-bottom: 0;
+}
+
+.main-tabs :deep(.ant-tabs-content-holder) {
+  padding: 16px 0;
 }
 </style>

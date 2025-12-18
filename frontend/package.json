@@ -14,11 +14,14 @@
     "@ant-design/icons-vue": "^7.0.1",
     "ant-design-vue": "^4.1.2",
     "axios": "^1.6.7",
+    "dompurify": "^3.3.1",
+    "marked": "^17.0.1",
     "pinia": "^2.1.7",
     "vue": "^3.4.21",
     "vue-router": "^4.3.0"
   },
   "devDependencies": {
+    "@types/dompurify": "^3.2.0",
     "@vitejs/plugin-vue": "^5.0.4",
     "@vue/tsconfig": "^0.5.1",
     "eslint": "^8.57.0",
