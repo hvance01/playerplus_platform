@@ -109,6 +109,20 @@ playerplus_platform/
 | `STORAGE_DIRECT_URL` | `https://pub-xxx.r2.dev` | R2 直连 URL (VModel API 访问) |
 | `MINIO_PUBLIC_ENDPOINT` | `xxx.r2.cloudflarestorage.com` | R2 S3 API 端点 |
 
+### 自动部署 (Gitee Webhook)
+
+推送代码到 `main` 分支时自动触发 Railway 部署：
+
+```
+Gitee Push (main) → VPS Webhook → Railway API → 自动构建部署
+```
+
+| 配置项 | 值 |
+|--------|-----|
+| Webhook URL | `https://platform.playerplus.cn/deploy-webhook` |
+| 触发分支 | `main` / `master` |
+| Webhook 服务 | VPS `/opt/railway-webhook/railway_webhook.py` |
+
 ## Auth
 
 - **当前**: 邮箱验证码登录（Aliyun DirectMail）
