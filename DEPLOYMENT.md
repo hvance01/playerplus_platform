@@ -5,35 +5,93 @@
 ## 部署架构
 
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                     Railway Project                          │
-│                   (profound-wisdom)                          │
-├─────────────────────────────────────────────────────────────┤
-│  ┌─────────────────┐  ┌─────────────┐  ┌─────────────────┐  │
-│  │ playerplus-     │  │   Bucket    │  │    Postgres     │  │
-│  │ backend         │  │   (MinIO)   │  │                 │  │
-│  │                 │  │             │  │                 │  │
-│  │ Go + Vue SPA    │  │ S3 存储     │  │ 数据库          │  │
-│  └─────────────────┘  └─────────────┘  └─────────────────┘  │
-└─────────────────────────────────────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              整体架构                                        │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                                                                             │
+│   ┌─────────────┐      ┌─────────────┐      ┌─────────────────────────┐    │
+│   │  中国用户    │─CN2─>│  VPS (LA)   │─────>│  Railway 后端           │    │
+│   └─────────────┘      │  Nginx 代理  │      │  (playerplus-backend)   │    │
+│                        └──────┬──────┘      └─────────────────────────┘    │
+│                               │                                             │
+│                               v                                             │
+│                        ┌─────────────┐      ┌─────────────────────────┐    │
+│                        │ Cloudflare  │<─────│  VModel API             │    │
+│                        │ R2 存储     │      │  (直连，绕过CDN)         │    │
+│                        └─────────────┘      └─────────────────────────┘    │
+│                                                                             │
+├─────────────────────────────────────────────────────────────────────────────┤
+│                           Railway Project (profound-wisdom)                  │
+├─────────────────────────────────────────────────────────────────────────────┤
+│  ┌─────────────────┐                        ┌─────────────────┐            │
+│  │ playerplus-     │                        │    Postgres     │            │
+│  │ backend         │                        │                 │            │
+│  │ Go + Vue SPA    │                        │ 数据库          │            │
+│  └─────────────────┘                        └─────────────────┘            │
+└─────────────────────────────────────────────────────────────────────────────┘
 ```
+
+## VPS 反向代理 (Hostdare LA CN2)
+
+| 配置 | 值 |
+|------|-----|
+| IP | 31.40.214.114 |
+| 系统 | Ubuntu |
+| 线路 | CN2 (中国优化) |
+| Nginx 配置目录 | `/etc/nginx/conf.d/` |
+
+### Nginx 配置文件
+
+| 文件 | 用途 | 上游 |
+|------|------|------|
+| `platform-proxy.conf` | 平台全站反向代理 | Railway 后端 |
+| `r2-proxy.conf` | 媒体 CDN 反向代理 | Cloudflare R2 |
+
+### 安全配置
+
+- **SSL**: Let's Encrypt 自动续期
+- **HSTS**: 启用
+- **TLS 验证**: 启用 (proxy_ssl_verify on)
 
 ## 服务地址
 
-| 服务 | 地址 |
-|------|------|
-| 应用（主域名） | https://platform.playerplus.cn |
-| 应用（Railway） | https://playerplus-backend-production.up.railway.app |
-| MinIO | https://bucket-production-acf6.up.railway.app |
-| MinIO Console | https://console-production-fa67.up.railway.app |
+| 服务 | 地址 | 说明 |
+|------|------|------|
+| 平台（通过VPS） | https://platform.playerplus.cn | 中国用户访问 |
+| 媒体 CDN | https://cdn.playerplus.cn | 媒体文件加速 |
+| Railway 后端 | https://ordumf4h.up.railway.app | 原始后端 |
+| R2 直连 | https://pub-xxx.r2.dev | VModel API 访问 |
+
+## 存储配置
+
+### 环境变量
+
+| 变量 | 值 | 说明 |
+|------|-----|------|
+| `STORAGE_PUBLIC_URL` | `https://cdn.playerplus.cn` | CDN URL (中国用户) |
+| `STORAGE_DIRECT_URL` | `https://pub-xxx.r2.dev` | R2 直连 (VModel API) |
+| `MINIO_PUBLIC_ENDPOINT` | `xxx.r2.cloudflarestorage.com` | R2 S3 API |
+| `BUCKET_NAME` | `playerplus-media` | 存储桶名称 |
+
+### URL 转换逻辑
+
+VModel API 调用时，系统自动将 CDN URL 转换为 R2 直连 URL：
+
+```
+CDN URL:    https://cdn.playerplus.cn/playerplus-media/videos/xxx.mp4
+Direct URL: https://pub-xxx.r2.dev/videos/xxx.mp4
+```
+
+这样可以避免 VModel API 访问 CDN 时的"冷启动"超时问题。
 
 ## 自定义域名配置
 
 ### 域名信息
 
-- **域名**: `platform.playerplus.cn`
-- **DNS 提供商**: 阿里云
-- **CNAME 值**: `ordumf4h.up.railway.app`
+| 域名 | 类型 | 指向 |
+|------|------|------|
+| `platform.playerplus.cn` | A 记录 | 31.40.214.114 (VPS) |
+| `cdn.playerplus.cn` | A 记录 | 31.40.214.114 (VPS) |
 
 ### 配置步骤
 

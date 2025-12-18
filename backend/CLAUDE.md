@@ -121,10 +121,16 @@ go build -o bin/server ./cmd/server
 | `MINIO_ROOT_USER` | 是* | MinIO 访问密钥 | - |
 | `MINIO_ROOT_PASSWORD` | 是* | MinIO 密钥 | - |
 | `BUCKET_NAME` | 否 | 存储桶名称 | `playerplus-media` |
-| `STORAGE_PUBLIC_URL` | 否 | 存储公网 URL | - |
+| `STORAGE_PUBLIC_URL` | 否 | CDN URL (中国用户访问) | - |
+| `STORAGE_DIRECT_URL` | 否 | R2 直连 URL (VModel API 访问) | - |
 | `RESEND_API_KEY` | 否 | Resend 邮件密钥 | - |
 
 > *注：标记为"是*"的变量，未配置时服务会进入 Mock 模式。
+
+### 存储 URL 说明
+
+- **STORAGE_PUBLIC_URL**: CDN URL，用于返回给前端，中国用户通过 VPS 加速访问
+- **STORAGE_DIRECT_URL**: R2 直连 URL，用于 VModel API 访问，绕过 CDN 避免超时
 
 ## 核心服务
 
@@ -138,11 +144,13 @@ go build -o bin/server ./cmd/server
 
 ### Storage (`service/storage.go`)
 
-MinIO 存储服务：
-- `UploadFile()` - 上传文件到 MinIO
-- `GetPublicURL()` - 获取文件公网 URL
+Cloudflare R2 存储服务：
+- `UploadFile()` - 上传文件到 R2
+- `GetPublicURL()` - 获取 CDN URL (中国用户访问)
+- `GetDirectURL()` - 获取 R2 直连 URL (VModel API 访问)
+- `ConvertToDirectURL()` - 将 CDN URL 转换为直连 URL
 - `DeleteFile()` - 删除文件
-- `TransferFromVModel()` - 异步转存 VModel 结果视频到 MinIO（支持失败重试）
+- `TransferFromVModel()` - 异步转存 VModel 结果视频到 R2（支持失败重试）
 - `GetTransferStatus()` - 获取转存状态（pending/completed/failed）
 - `CleanupExpiredCache()` - 清理过期缓存（24小时 TTL）
 - `StartCacheCleanupJob()` - 启动定时清理任务

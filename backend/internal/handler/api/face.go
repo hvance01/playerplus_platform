@@ -72,10 +72,14 @@ func DetectFaces(c *gin.Context) {
 
 // detectWithVModel uses VModel API for face detection
 func detectWithVModel(c *gin.Context, imageURL string) {
-	log.Printf("[DEBUG] detectWithVModel called with URL: %s", imageURL)
+	// Convert CDN URL to direct storage URL for VModel API
+	// VModel is hosted outside China and doesn't need CDN acceleration
+	storage := service.GetStorageService()
+	directURL := storage.ConvertToDirectURL(imageURL)
+	log.Printf("[DEBUG] detectWithVModel: CDN=%s, Direct=%s", imageURL, directURL)
 
 	vmodel := service.GetVModelClient()
-	result, err := vmodel.DetectFaces(c.Request.Context(), imageURL)
+	result, err := vmodel.DetectFaces(c.Request.Context(), directURL)
 	if err != nil {
 		log.Printf("[ERROR] VModel face detection failed: %v", err)
 

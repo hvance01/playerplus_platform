@@ -283,6 +283,44 @@ func (s *StorageService) GetPublicURL(key string) string {
 	return fmt.Sprintf("/uploads/%s", key)
 }
 
+// GetDirectURL returns the direct storage URL (bypassing CDN) for external API access
+// This is useful for VModel API which is hosted outside China and doesn't need CDN acceleration
+func (s *StorageService) GetDirectURL(key string) string {
+	if s.minioClient != nil {
+		directURL := s.cfg.StorageDirectURL
+		if directURL != "" {
+			return fmt.Sprintf("%s/%s", strings.TrimSuffix(directURL, "/"), key)
+		}
+		// Fallback to public URL if direct URL not configured
+		return s.GetPublicURL(key)
+	}
+	return fmt.Sprintf("/uploads/%s", key)
+}
+
+// ConvertToDirectURL converts a CDN URL to direct storage URL for external API access
+func (s *StorageService) ConvertToDirectURL(cdnURL string) string {
+	publicURL := s.cfg.StoragePublicURL
+	directURL := s.cfg.StorageDirectURL
+
+	// If no direct URL configured, return original
+	if directURL == "" {
+		return cdnURL
+	}
+
+	// If URL contains CDN domain, convert to direct URL
+	if publicURL != "" && strings.Contains(cdnURL, publicURL) {
+		// Extract key from CDN URL
+		// e.g., https://cdn.playerplus.cn/playerplus-media/videos/xxx.mp4 -> videos/xxx.mp4
+		bucketPrefix := "/" + s.bucketName + "/"
+		if idx := strings.Index(cdnURL, bucketPrefix); idx != -1 {
+			key := cdnURL[idx+len(bucketPrefix):]
+			return s.GetDirectURL(key)
+		}
+	}
+
+	return cdnURL
+}
+
 // GetPresignedURL returns a presigned URL for temporary access
 func (s *StorageService) GetPresignedURL(ctx context.Context, key string, expiry time.Duration) (string, error) {
 	if s.minioClient == nil {

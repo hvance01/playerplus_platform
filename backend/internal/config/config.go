@@ -30,7 +30,8 @@ type Config struct {
 	StorageRegion    string
 	StorageAccessKey string
 	StorageSecretKey string
-	StoragePublicURL string // Public URL for accessing stored files
+	StoragePublicURL  string // Public URL for accessing stored files (CDN)
+	StorageDirectURL  string // Direct URL for external API access (bypassing CDN)
 
 	// Resend (Email)
 	ResendAPIKey string
@@ -55,7 +56,8 @@ func Get() *Config {
 			StorageRegion:    getEnv("AWS_REGION", "us-east-1"),
 			StorageAccessKey: getEnv("MINIO_ROOT_USER", os.Getenv("AWS_ACCESS_KEY_ID")),
 			StorageSecretKey: getEnv("MINIO_ROOT_PASSWORD", os.Getenv("AWS_SECRET_ACCESS_KEY")),
-			StoragePublicURL: getEnv("STORAGE_PUBLIC_URL", ""),
+			StoragePublicURL:  getEnv("STORAGE_PUBLIC_URL", ""),
+			StorageDirectURL:  getEnv("STORAGE_DIRECT_URL", ""),
 
 			// Resend
 			ResendAPIKey: os.Getenv("RESEND_API_KEY"),
