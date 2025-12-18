@@ -6,11 +6,24 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"math/rand"
 	"net/http"
 	"sync"
 	"time"
 
 	"playplus_platform/internal/config"
+)
+
+func init() {
+	// Seed random number generator for jitter
+	rand.Seed(time.Now().UnixNano())
+}
+
+const (
+	maxRetries     = 3
+	baseRetryDelay = 500 * time.Millisecond
+	maxRetryDelay  = 5 * time.Second
 )
 
 // VModel API version IDs
@@ -130,48 +143,109 @@ type VModelDetectStatusResult struct {
 // --- API Methods ---
 
 // doRequest makes an authenticated request to VModel API
+// GET requests are retried on transient failures, POST requests are not (not idempotent)
 func (c *VModelClient) doRequest(ctx context.Context, method, endpoint string, body interface{}) ([]byte, error) {
-	var reqBody io.Reader
+	var jsonBody []byte
+	var err error
 	if body != nil {
-		jsonBody, err := json.Marshal(body)
+		jsonBody, err = json.Marshal(body)
 		if err != nil {
 			return nil, fmt.Errorf("marshal request: %w", err)
 		}
-		reqBody = bytes.NewBuffer(jsonBody)
 	}
 
 	url := fmt.Sprintf("%s%s", c.cfg.VModelBaseURL, endpoint)
-	req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
-	if err != nil {
-		return nil, fmt.Errorf("create request: %w", err)
+
+	// Only retry GET requests (idempotent)
+	retryable := method == "GET"
+	maxAttempts := 1
+	if retryable {
+		maxAttempts = maxRetries + 1
 	}
 
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Bearer "+c.cfg.VModelAPIToken)
+	var lastErr error
 
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("request failed: %w", err)
+	for attempt := 0; attempt < maxAttempts; attempt++ {
+		// Wait before retry (skip first attempt)
+		if attempt > 0 {
+			delay := time.Duration(1<<uint(attempt-1)) * baseRetryDelay
+			if delay > maxRetryDelay {
+				delay = maxRetryDelay
+			}
+			// Add jitter (0-25% of delay)
+			jitter := time.Duration(rand.Int63n(int64(delay / 4)))
+			delay += jitter
+
+			log.Printf("[WARN] VModel API retry %d/%d for %s %s after %v", attempt, maxRetries, method, endpoint, delay)
+
+			select {
+			case <-ctx.Done():
+				return nil, ctx.Err()
+			case <-time.After(delay):
+			}
+		}
+
+		// Create request with fresh body reader
+		var reqBody io.Reader
+		if jsonBody != nil {
+			reqBody = bytes.NewReader(jsonBody)
+		}
+
+		req, err := http.NewRequestWithContext(ctx, method, url, reqBody)
+		if err != nil {
+			return nil, fmt.Errorf("create request: %w", err)
+		}
+
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("Authorization", "Bearer "+c.cfg.VModelAPIToken)
+
+		resp, err := c.httpClient.Do(req)
+		if err != nil {
+			lastErr = fmt.Errorf("request failed: %w", err)
+			// Only short-circuit if caller's context is done
+			if ctx.Err() != nil {
+				return nil, lastErr
+			}
+			if retryable {
+				continue // Retry
+			}
+			return nil, lastErr
+		}
+
+		respBody, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			lastErr = fmt.Errorf("read response: %w", err)
+			if retryable {
+				continue // Retry
+			}
+			return nil, lastErr
+		}
+
+		// Check for retryable HTTP status codes (5xx, 429)
+		if resp.StatusCode >= 500 || resp.StatusCode == 429 {
+			lastErr = fmt.Errorf("HTTP %d: %s", resp.StatusCode, string(respBody))
+			if retryable {
+				continue // Retry
+			}
+			return nil, lastErr
+		}
+
+		// Parse the wrapper response
+		var apiResp vmodelAPIResponse
+		if err := json.Unmarshal(respBody, &apiResp); err != nil {
+			return nil, fmt.Errorf("decode API response: %w (body: %s)", err, string(respBody))
+		}
+
+		// Check for API-level errors (not retryable - business logic errors)
+		if apiResp.Code != 200 {
+			return nil, fmt.Errorf("API error (code %d): %s", apiResp.Code, string(apiResp.Message))
+		}
+
+		return apiResp.Result, nil
 	}
-	defer resp.Body.Close()
 
-	respBody, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	// Parse the wrapper response
-	var apiResp vmodelAPIResponse
-	if err := json.Unmarshal(respBody, &apiResp); err != nil {
-		return nil, fmt.Errorf("decode API response: %w (body: %s)", err, string(respBody))
-	}
-
-	// Check for API-level errors
-	if apiResp.Code != 200 {
-		return nil, fmt.Errorf("API error (code %d): %s", apiResp.Code, string(apiResp.Message))
-	}
-
-	return apiResp.Result, nil
+	return nil, fmt.Errorf("max retries exceeded: %w", lastErr)
 }
 
 // DetectFaces detects faces in an image/video URL
