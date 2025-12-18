@@ -112,6 +112,21 @@ type VModelSwapTaskResult struct {
 	Error     string `json:"error,omitempty"`
 }
 
+// VModelDetectTaskResult is the result of a detect task creation
+type VModelDetectTaskResult struct {
+	TaskID string `json:"task_id"`
+	Status string `json:"status"` // queuing, processing, completed, failed
+}
+
+// VModelDetectStatusResult is the result of checking detect task status
+type VModelDetectStatusResult struct {
+	TaskID   string               `json:"task_id"`
+	Status   string               `json:"status"` // queuing, processing, completed, failed
+	DetectID string               `json:"detect_id,omitempty"`
+	Faces    []VModelDetectedFace `json:"faces,omitempty"`
+	Error    string               `json:"error,omitempty"`
+}
+
 // --- API Methods ---
 
 // doRequest makes an authenticated request to VModel API
@@ -228,6 +243,97 @@ func (c *VModelClient) DetectFaces(ctx context.Context, mediaURL string) (*VMode
 		DetectID: detectID,
 		Faces:    allFaces,
 	}, nil
+}
+
+// CreateDetectTask creates a face detection task and returns immediately (async)
+func (c *VModelClient) CreateDetectTask(ctx context.Context, mediaURL string) (*VModelDetectTaskResult, error) {
+	reqBody := vmodelCreateTaskRequest{
+		Version: VModelVideoFaceDetectVersion,
+		Input: map[string]interface{}{
+			"source": mediaURL,
+		},
+	}
+
+	resultBytes, err := c.doRequest(ctx, "POST", "/api/tasks/v1/create", reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("create detect task: %w", err)
+	}
+
+	var createResult vmodelCreateTaskResult
+	if err := json.Unmarshal(resultBytes, &createResult); err != nil {
+		return nil, fmt.Errorf("decode create result: %w (body: %s)", err, string(resultBytes))
+	}
+
+	return &VModelDetectTaskResult{
+		TaskID: createResult.TaskID,
+		Status: "queuing",
+	}, nil
+}
+
+// GetDetectTaskStatus gets the status of a face detection task
+// Error handling:
+// - queuing/processing: returns result, nil error (caller keeps polling)
+// - succeeded: returns result, nil error (success)
+// - failed: returns result, error (actual failure - caller should stop polling)
+// - HTTP/decode errors: returns nil, error
+func (c *VModelClient) GetDetectTaskStatus(ctx context.Context, taskID string) (*VModelDetectStatusResult, error) {
+	endpoint := fmt.Sprintf("/api/tasks/v1/get/%s", taskID)
+	resultBytes, err := c.doRequest(ctx, "GET", endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("get detect task: %w", err)
+	}
+
+	var taskResult vmodelTaskResult
+	if err := json.Unmarshal(resultBytes, &taskResult); err != nil {
+		return nil, fmt.Errorf("decode task result: %w", err)
+	}
+
+	status := c.mapStatus(taskResult.Status)
+	result := &VModelDetectStatusResult{
+		TaskID: taskID,
+		Status: status,
+	}
+
+	// For queuing/processing, return status without error (caller keeps polling)
+	if taskResult.Status == "starting" || taskResult.Status == "processing" {
+		return result, nil
+	}
+
+	// For failed status, return both result and error
+	if taskResult.Status == "failed" {
+		result.Error = parseVModelError(taskResult.Error)
+		if result.Error == "" {
+			result.Error = "detection failed"
+		}
+		return result, fmt.Errorf("detection failed: %s", result.Error)
+	}
+
+	// For succeeded status, parse the output
+	if taskResult.Status == "succeeded" {
+		var outputs []vmodelDetectOutput
+		if err := json.Unmarshal(taskResult.Output, &outputs); err != nil {
+			return nil, fmt.Errorf("decode output: %w", err)
+		}
+
+		// Aggregate faces from all outputs
+		for _, output := range outputs {
+			if output.Status == "succeed" {
+				if result.DetectID == "" {
+					result.DetectID = output.ID
+				}
+				result.Faces = append(result.Faces, output.Faces...)
+			}
+		}
+
+		if result.DetectID == "" {
+			// No faces detected is a valid completed state, not a failure
+			result.Status = "completed"
+			result.Faces = []VModelDetectedFace{} // Empty faces array
+			// Don't return error - this is a successful completion with no faces
+		}
+	}
+
+	return result, nil
 }
 
 // CreateSwapTask creates a video face swap task

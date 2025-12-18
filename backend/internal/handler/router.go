@@ -54,8 +54,9 @@ func SetupRouter() *gin.Engine {
 			// Face detection
 			face := v2.Group("/face")
 			{
-				face.POST("/detect", api.DetectFaces)             // Detect faces from URL
-				face.POST("/detect/upload", api.DetectFacesFromUpload) // Detect faces from uploaded file
+				face.POST("/detect", api.DetectFaces)                  // Start face detection (returns task_id)
+				face.GET("/detect/:task_id", api.GetFaceDetectStatus)  // Poll face detection status
+				face.POST("/detect/upload", api.DetectFacesFromUpload) // Start detection from uploaded file
 			}
 
 			// Face swap

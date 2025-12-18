@@ -235,7 +235,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from 'vue'
+import { ref, computed, onUnmounted } from 'vue'
 import { message } from 'ant-design-vue'
 import MarkdownViewer from '@/components/MarkdownViewer.vue'
 import guideContent from '@/docs/faceswap.md?raw'
@@ -277,6 +277,9 @@ const faceEnhance = ref(false)
 const taskModalVisible = ref(false)
 // Reuse TaskStatusResponse type from API for type safety
 const currentTask = ref<TaskStatusResponse['data'] | null>(null)
+
+// Detection polling timer (for async face detection)
+const detectPollTimer = ref<number | null>(null)
 
 // --- Computed ---
 const canCreate = computed(() => {
@@ -363,7 +366,17 @@ const formatTime = (seconds: number) => {
   return `${mins}:${secs.toString().padStart(2, '0')}`
 }
 
+// Cancel detection polling and reset detecting state
+const cancelDetectPolling = () => {
+  if (detectPollTimer.value) {
+    clearTimeout(detectPollTimer.value)
+    detectPollTimer.value = null
+  }
+  detecting.value = false
+}
+
 const clearVideo = () => {
+  cancelDetectPolling() // Cancel any ongoing detection polling
   videoUrl.value = ''
   videoPublicUrl.value = ''
   detectedFaces.value = []
@@ -373,35 +386,96 @@ const clearVideo = () => {
   detectId.value = ''
 }
 
-// --- Face Detection from Video URL ---
+// --- Face Detection from Video URL (Async) ---
+
+// Poll face detection status
+const pollDetectStatus = async (taskId: string) => {
+  try {
+    const { data } = await faceswapApiV2.getDetectStatus(taskId)
+
+    if (data.code !== 0) {
+      throw new Error(data.msg || 'Failed to get detection status')
+    }
+
+    const status = data.data?.status
+
+    if (status === 'failed') {
+      detecting.value = false
+      message.error('人脸检测失败: ' + (data.msg || '未知错误'))
+      return
+    }
+
+    if (status === 'completed') {
+      detecting.value = false
+
+      if (!data.data?.faces.length) {
+        message.warning('视频中未检测到人脸，请确保视频中有清晰的人脸画面')
+        return
+      }
+
+      detectedFaces.value = data.data.faces
+      detectId.value = data.data.detect_id || ''
+      selectedFaceIndices.value = []
+      replacementFaces.value = {}
+
+      message.success(`检测到 ${data.data.faces.length} 张人脸，请选择要替换的人脸`)
+      return
+    }
+
+    // Still queuing or processing, continue polling
+    detectPollTimer.value = window.setTimeout(() => pollDetectStatus(taskId), 2000)
+  } catch (error: any) {
+    detecting.value = false
+    message.error('人脸检测失败: ' + (error.message || '未知错误'))
+  }
+}
+
+// Start face detection (async)
 const detectFacesFromVideo = async () => {
   if (!videoPublicUrl.value || detecting.value) return
 
   detecting.value = true
+  cancelDetectPolling() // Cancel any existing polling
+
   try {
-    // Call API with video URL to detect ALL faces in the entire video
     const { data } = await faceswapApiV2.detectFaces(videoPublicUrl.value)
 
     if (data.code !== 0) {
       throw new Error(data.msg || 'Detection failed')
     }
 
-    if (!data.data?.faces.length) {
-      message.warning('视频中未检测到人脸，请确保视频中有清晰的人脸画面')
+    // Store frame_image from initial response (backend only returns it here)
+    if (data.data?.frame_image) {
+      frameImageUrl.value = data.data.frame_image
+    }
+
+    // Check if mock mode (completed immediately)
+    if (data.data?.status === 'completed') {
+      if (!data.data?.faces.length) {
+        message.warning('视频中未检测到人脸，请确保视频中有清晰的人脸画面')
+        detecting.value = false
+        return
+      }
+
+      detectedFaces.value = data.data.faces
+      detectId.value = data.data.detect_id || ''
+      selectedFaceIndices.value = []
+      replacementFaces.value = {}
+      detecting.value = false
+
+      message.success(`检测到 ${data.data.faces.length} 张人脸，请选择要替换的人脸`)
       return
     }
 
-    detectedFaces.value = data.data.faces
-    frameImageUrl.value = data.data.frame_image
-    detectId.value = data.data.detect_id || ''
-    selectedFaceIndices.value = []
-    replacementFaces.value = {}
-
-    message.success(`检测到 ${data.data.faces.length} 张人脸，请选择要替换的人脸`)
+    // Async mode: start polling
+    if (data.data?.task_id) {
+      pollDetectStatus(data.data.task_id)
+    } else {
+      throw new Error('No task_id returned')
+    }
   } catch (error: any) {
-    message.error('人脸检测失败: ' + (error.message || '未知错误'))
-  } finally {
     detecting.value = false
+    message.error('人脸检测失败: ' + (error.message || '未知错误'))
   }
 }
 
@@ -549,6 +623,11 @@ const resetAll = () => {
   taskModalVisible.value = false
   currentTask.value = null
 }
+
+// Cleanup on unmount
+onUnmounted(() => {
+  cancelDetectPolling()
+})
 </script>
 
 <style scoped>

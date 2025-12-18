@@ -3,7 +3,6 @@ package api
 import (
 	"log"
 	"net/http"
-	"strings"
 
 	"github.com/gin-gonic/gin"
 	"playplus_platform/internal/config"
@@ -14,7 +13,6 @@ type DetectFacesRequest struct {
 	ImageURL string `json:"image_url" binding:"required"`
 }
 
-// DetectedFaceResponse represents a detected face in API response
 type DetectedFaceResponse struct {
 	Index     int       `json:"index"`
 	FaceID    int       `json:"face_id"`
@@ -22,10 +20,13 @@ type DetectedFaceResponse struct {
 	BBox      []float64 `json:"bbox,omitempty"`
 }
 
+// DetectFacesResponseData - ALL responses include Status for polling logic
 type DetectFacesResponseData struct {
+	TaskID     string                 `json:"task_id,omitempty"`
+	Status     string                 `json:"status"` // queuing, processing, completed, failed
 	Faces      []DetectedFaceResponse `json:"faces"`
 	DetectID   string                 `json:"detect_id,omitempty"`
-	FrameImage string                 `json:"frame_image"`
+	FrameImage string                 `json:"frame_image,omitempty"`
 }
 
 type DetectFacesResponse struct {
@@ -34,7 +35,9 @@ type DetectFacesResponse struct {
 	Msg  string                   `json:"msg,omitempty"`
 }
 
-// DetectFaces handles face detection from an image URL
+// DetectFaces starts face detection from an image URL
+// Production: returns task_id with status="queuing", client polls GetFaceDetectStatus
+// Mock mode: returns completed response immediately
 func DetectFaces(c *gin.Context) {
 	var req DetectFacesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -52,17 +55,12 @@ func DetectFaces(c *gin.Context) {
 		return
 	}
 
-	// Return mock data for development
+	// Mock mode: return completed immediately (backward compatible)
 	c.JSON(http.StatusOK, DetectFacesResponse{
 		Code: 0,
 		Data: &DetectFacesResponseData{
-			Faces: []DetectedFaceResponse{
-				{
-					Index:  0,
-					FaceID: 0,
-					BBox:   []float64{100, 100, 150, 150},
-				},
-			},
+			Status:     "completed",
+			Faces:      []DetectedFaceResponse{{Index: 0, FaceID: 0, BBox: []float64{100, 100, 150, 150}}},
 			DetectID:   "mock_detect_id",
 			FrameImage: req.ImageURL,
 		},
@@ -70,41 +68,106 @@ func DetectFaces(c *gin.Context) {
 	})
 }
 
-// detectWithVModel uses VModel API for face detection
+// detectWithVModel starts async face detection using VModel API
 func detectWithVModel(c *gin.Context, imageURL string) {
 	// Convert CDN URL to direct storage URL for VModel API
-	// VModel is hosted outside China and doesn't need CDN acceleration
 	storage := service.GetStorageService()
 	directURL := storage.ConvertToDirectURL(imageURL)
 	log.Printf("[DEBUG] detectWithVModel: CDN=%s, Direct=%s", imageURL, directURL)
 
 	vmodel := service.GetVModelClient()
-	result, err := vmodel.DetectFaces(c.Request.Context(), directURL)
+	result, err := vmodel.CreateDetectTask(c.Request.Context(), directURL)
 	if err != nil {
-		log.Printf("[ERROR] VModel face detection failed: %v", err)
-
-		// Check if it's a "no face detected" error - return 200 with empty faces instead of 500
-		errStr := err.Error()
-		if strings.Contains(errStr, "未检测到人脸") || strings.Contains(errStr, "no face") || strings.Contains(errStr, "Detect.Failed") {
-			c.JSON(http.StatusOK, DetectFacesResponse{
-				Code: 0,
-				Data: &DetectFacesResponseData{
-					Faces:      []DetectedFaceResponse{},
-					FrameImage: imageURL,
-				},
-				Msg: "未检测到人脸，请调整视频位置重试",
-			})
-			return
-		}
-
+		log.Printf("[ERROR] VModel create detect task failed: %v", err)
 		c.JSON(http.StatusInternalServerError, DetectFacesResponse{
 			Code: 500,
-			Msg:  "Face detection failed: " + err.Error(),
+			Msg:  "Failed to start face detection: " + err.Error(),
 		})
 		return
 	}
 
-	// Convert to response format
+	log.Printf("[INFO] Face detection task created: %s", result.TaskID)
+	c.JSON(http.StatusOK, DetectFacesResponse{
+		Code: 0,
+		Data: &DetectFacesResponseData{
+			TaskID:     result.TaskID,
+			Status:     result.Status, // "queuing"
+			Faces:      []DetectedFaceResponse{},
+			FrameImage: imageURL, // Frontend stores this for later use
+		},
+	})
+}
+
+// GetFaceDetectStatus returns the status of a face detection task
+// Client should poll this endpoint until status is "completed" or "failed"
+func GetFaceDetectStatus(c *gin.Context) {
+	taskID := c.Param("task_id")
+	if taskID == "" {
+		c.JSON(http.StatusBadRequest, DetectFacesResponse{
+			Code: 400,
+			Msg:  "Task ID is required",
+		})
+		return
+	}
+
+	cfg := config.Get()
+	if !cfg.IsVModelConfigured() {
+		// Mock: return completed immediately
+		c.JSON(http.StatusOK, DetectFacesResponse{
+			Code: 0,
+			Data: &DetectFacesResponseData{
+				TaskID:   taskID,
+				Status:   "completed",
+				Faces:    []DetectedFaceResponse{{Index: 0, FaceID: 0}},
+				DetectID: "mock_detect_id",
+			},
+			Msg: "Mock response",
+		})
+		return
+	}
+
+	vmodel := service.GetVModelClient()
+	result, err := vmodel.GetDetectTaskStatus(c.Request.Context(), taskID)
+
+	// HTTP/decode errors (result is nil)
+	if err != nil && result == nil {
+		log.Printf("[ERROR] VModel get detect status failed: %v", err)
+		c.JSON(http.StatusInternalServerError, DetectFacesResponse{
+			Code: 500,
+			Msg:  "Failed to get detection status: " + err.Error(),
+		})
+		return
+	}
+
+	// Queuing/processing - client should continue polling
+	if result.Status == "queuing" || result.Status == "processing" {
+		c.JSON(http.StatusOK, DetectFacesResponse{
+			Code: 0,
+			Data: &DetectFacesResponseData{
+				TaskID: taskID,
+				Status: result.Status,
+				Faces:  []DetectedFaceResponse{},
+			},
+		})
+		return
+	}
+
+	// Failed - terminal state
+	if result.Status == "failed" {
+		log.Printf("[WARN] Face detection failed for task %s: %s", taskID, result.Error)
+		c.JSON(http.StatusOK, DetectFacesResponse{
+			Code: 0,
+			Data: &DetectFacesResponseData{
+				TaskID: taskID,
+				Status: "failed",
+				Faces:  []DetectedFaceResponse{},
+			},
+			Msg: result.Error,
+		})
+		return
+	}
+
+	// Completed - build faces response
 	faces := make([]DetectedFaceResponse, len(result.Faces))
 	for i, f := range result.Faces {
 		faces[i] = DetectedFaceResponse{
@@ -114,12 +177,14 @@ func detectWithVModel(c *gin.Context, imageURL string) {
 		}
 	}
 
+	log.Printf("[INFO] Face detection completed for task %s: %d faces found", taskID, len(faces))
 	c.JSON(http.StatusOK, DetectFacesResponse{
 		Code: 0,
 		Data: &DetectFacesResponseData{
-			Faces:      faces,
-			DetectID:   result.DetectID,
-			FrameImage: imageURL,
+			TaskID:   taskID,
+			Status:   "completed",
+			Faces:    faces,
+			DetectID: result.DetectID,
 		},
 	})
 }
@@ -154,17 +219,12 @@ func DetectFacesFromUpload(c *gin.Context) {
 		return
 	}
 
-	// Return mock data
+	// Mock mode: return completed immediately
 	c.JSON(http.StatusOK, DetectFacesResponse{
 		Code: 0,
 		Data: &DetectFacesResponseData{
-			Faces: []DetectedFaceResponse{
-				{
-					Index:  0,
-					FaceID: 0,
-					BBox:   []float64{100, 100, 150, 150},
-				},
-			},
+			Status:     "completed",
+			Faces:      []DetectedFaceResponse{{Index: 0, FaceID: 0}},
 			DetectID:   "mock_detect_id",
 			FrameImage: url,
 		},

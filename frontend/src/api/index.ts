@@ -59,9 +59,11 @@ export interface DetectedFace {
 export interface DetectFacesResponse {
   code: number
   data?: {
+    task_id?: string        // For async polling
+    status: 'queuing' | 'processing' | 'completed' | 'failed'
     faces: DetectedFace[]
-    detect_id?: string      // VModel detect_id for swap
-    frame_image: string
+    detect_id?: string      // VModel detect_id for swap (on completed)
+    frame_image?: string    // Returned on initial request, stored by frontend
   }
   msg?: string
 }
@@ -141,6 +143,10 @@ export const faceswapApiV2 = {
       headers: { 'Content-Type': 'multipart/form-data' }
     })
   },
+
+  // Get face detection task status (async polling)
+  getDetectStatus: (taskId: string) =>
+    api.get<DetectFacesResponse>(`/v2/face/detect/${taskId}`),
 
   // Create face swap task
   createSwapTask: (req: CreateFaceSwapRequest) =>
